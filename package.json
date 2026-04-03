@@ -1,0 +1,20 @@
+{
+  "name": "aegis",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:hq": "npm run dev -w @aegis/web-hq",
+    "dev:store": "npm run dev -w @aegis/web-store",
+    "lint": "npm run lint --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.14.0",
+    "eslint": "^9.14.0",
+    "globals": "^15.12.0",
+    "typescript-eslint": "^8.13.0"
+  }
+}

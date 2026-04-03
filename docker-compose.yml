@@ -1,0 +1,24 @@
+# 本地联调：一个 Postgres 进程内两个库 ——
+#   aegis_go：foundation-data + store-ops 共用
+#   aegis_python：traffic-sense + ai-assistant 共用
+# 首次初始化时由 database/docker-init 创建第二套库。
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: aegis
+      POSTGRES_PASSWORD: aegis_dev
+      POSTGRES_DB: aegis_go
+    ports:
+      - "5432:5432"
+    volumes:
+      - aegis_pg_data:/var/lib/postgresql/data
+      - ./database/docker-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aegis -d aegis_go"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  aegis_pg_data:
