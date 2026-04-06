@@ -1,0 +1,27 @@
+aegis_go 迁移（golang-migrate）
+
+一、查看 Postgres 容器名（用于 docker exec ... psql）
+  1. 在仓库根目录执行：docker compose ps
+  2. 在输出表格中找到 SERVICE 为 postgres 的那一行
+  3. 使用该行 NAME 列的完整名字（例如 aegis-postgres-1；随项目目录名可能为 aegis-postgres-1 或带前缀）
+
+  示例：
+    docker exec -it aegis-postgres-1 psql -U aegis -d aegis_go -c "SELECT 1;"
+
+  若 NAME 不同，把 aegis-postgres-1 换成你本机 docker compose ps 显示的 NAME。
+
+二、本地重跑初始迁移（开发环境、可清空 aegis_go）
+  1. pgAdmin 或 psql 执行：DROP TABLE IF EXISTS schema_migrations;
+     （若仍异常，可用 DROP SCHEMA public CASCADE; CREATE SCHEMA public; GRANT ALL ON SCHEMA public TO aegis; GRANT ALL ON SCHEMA public TO public;）
+  2. 仓库根目录：migrate -path database/migrations/go -database "postgres://aegis:aegis_dev@localhost:5432/aegis_go?sslmode=disable" up
+  3. 确认：migrate ... version 应为 1，schema_migrations.dirty 应为 false
+
+三、勿使用 migrate force 0 后再 up（易触发 version 0 相关错误）；优先删 schema_migrations 表后 up。
+
+四、迁移 SQL 内不要使用 BEGIN/COMMIT（由 migrate 包装事务）。
+
+五、Mock 种子数据（对齐《Aegis接口设计文档》§7.1）
+  在 migrate up 成功后执行：
+    psql "postgres://aegis:aegis_dev@localhost:5432/aegis_go?sslmode=disable" -f database/seeds/aegis_go_mock_7_1.sql
+  或在 pgAdmin 中打开 database/seeds/aegis_go_mock_7_1.sql 执行。
+  登录示例：head001 / 123456，store001_mgr / 123456（与文档一致）。

@@ -1,0 +1,47 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example
+
+# Env & secrets
+.env
+.env.local
+*.pem
+
+# Go
+bin/
+dist/
+*.exe
+*.test
+*.out
+vendor/
+
+# Node / frontend
+node_modules/
+dist-ssr/
+*.local
+.npm
+.pnpm-store/
+
+# Python
+__pycache__/
+*.py[cod]
+.Python
+.venv/
+venv/
+*.egg-info/
+.eggs/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+uv.lock
+
+# Logs & temp
+*.log
+tmp/
+temp/
