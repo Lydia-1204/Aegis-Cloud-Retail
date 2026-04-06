@@ -1,23 +1,40 @@
 package main
 
 import (
+	"database/sql"
 	"log"
 	"net/http"
-	"os"
+	"time"
+
+	"aegis/foundation-data/internal/app"
+	"aegis/foundation-data/internal/config"
+
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 func main() {
-	addr := os.Getenv("FOUNDATION_DATA_HTTP_ADDR")
-	if addr == "" {
-		addr = ":8081"
+	cfg := config.Load()
+	if cfg.DatabaseURL == "" {
+		log.Fatal("missing GO_DATABASE_URL or DATABASE_URL")
 	}
-	mux := http.NewServeMux()
-	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"service":"foundation-data","status":"ok"}`))
-	})
-	log.Printf("foundation-data listening on %s", addr)
-	if err := http.ListenAndServe(addr, mux); err != nil {
+
+	db, err := sql.Open("pgx", cfg.DatabaseURL)
+	if err != nil {
+		log.Fatalf("open db: %v", err)
+	}
+	defer db.Close()
+
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(10)
+	db.SetConnMaxLifetime(30 * time.Minute)
+
+	if err := db.Ping(); err != nil {
+		log.Fatalf("ping db: %v", err)
+	}
+
+	srv := app.NewServer(db, cfg.JWTSecret)
+	log.Printf("foundation-data listening on %s", cfg.HTTPAddr)
+	if err := http.ListenAndServe(cfg.HTTPAddr, srv.Routes()); err != nil {
 		log.Fatal(err)
 	}
 }
