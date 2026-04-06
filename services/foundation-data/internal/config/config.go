@@ -6,6 +6,7 @@ import "os"
 type Config struct {
 	HTTPAddr    string
 	DatabaseURL string
+	JWTSecret   string
 }
 
 func Load() Config {
@@ -17,8 +18,13 @@ func Load() Config {
 	if dbURL == "" {
 		dbURL = os.Getenv("DATABASE_URL")
 	}
+	jwtSecret := os.Getenv("FOUNDATION_DATA_JWT_SECRET")
+	if jwtSecret == "" {
+		jwtSecret = "foundation-data-dev-secret"
+	}
 	return Config{
 		HTTPAddr:    addr,
 		DatabaseURL: dbURL,
+		JWTSecret:   jwtSecret,
 	}
 }
