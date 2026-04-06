@@ -1,8 +1,7 @@
 -- aegis_go 初始表结构（foundation-data + store-ops 共用库）
 -- 约定：AI/Python 不直连本库；枚举类字段先用 VARCHAR + CHECK，便于演进。
 -- 执行（需安装 migrate CLI）：migrate -path database/migrations/go -database "postgres://..." up
-
-BEGIN;
+-- 注意：golang-migrate 对 PostgreSQL 默认已为单次迁移包装事务，请勿在本文件使用 BEGIN/COMMIT。
 
 -- ---------------------------------------------------------------------------
 -- foundation-data：门店 / 角色 / 用户 / 商品
@@ -27,7 +26,13 @@ COMMENT ON COLUMN stores.store_id IS '0 表示总部虚拟门店，供 app_users
 INSERT INTO stores (store_id, store_code, store_name, store_location, store_area, store_status)
 VALUES (0, 'HQ', '总部', '', 0, 'active');
 
-SELECT setval(pg_get_serial_sequence('stores', 'store_id'), (SELECT MAX(store_id) FROM stores));
+-- MAX(store_id)=0 时不能 setval(seq,0)（PG 序列最小为 1）；需 is_called=false 使下一次 nextval 得到 1
+WITH m AS (SELECT COALESCE(MAX(store_id), 0) AS mx FROM stores)
+SELECT setval(
+    pg_get_serial_sequence('stores', 'store_id'),
+    GREATEST((SELECT mx FROM m), 1),
+    (SELECT mx FROM m) >= 1
+);
 
 CREATE TABLE roles (
     role_id     BIGSERIAL PRIMARY KEY,
@@ -198,5 +203,3 @@ CREATE TABLE ai_inventory_diagnoses (
 COMMENT ON TABLE ai_inventory_diagnoses IS '库存诊断结果（store-ops 表；内容由 API 写入）';
 
 CREATE INDEX ix_ai_inv_diag_store_sku ON ai_inventory_diagnoses (store_id, sku_id);
-
-COMMIT;
