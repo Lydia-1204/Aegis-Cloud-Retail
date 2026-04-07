@@ -6,4 +6,187 @@
 
 body {
   margin: 0;
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+  color: #1f2937;
+  background: #f3f5f8;
+}
+
+a {
+  color: inherit;
+}
+
+.layout-root {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 240px 1fr;
+}
+
+.layout-sidebar {
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 24px 16px;
+}
+
+.layout-title {
+  margin: 0;
+  font-size: 24px;
+}
+
+.layout-subtitle {
+  margin: 8px 0 24px;
+  color: #94a3b8;
+}
+
+.layout-user {
+  margin: 0 0 12px;
+  color: #cbd5e1;
+}
+
+.layout-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.layout-link {
+  text-decoration: none;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: #cbd5e1;
+}
+
+.layout-link.active,
+.layout-link:hover {
+  background: #1e293b;
+  color: #f8fafc;
+}
+
+.layout-content {
+  padding: 24px;
+}
+
+.logout-btn {
+  margin-top: 16px;
+  width: 100%;
+  padding: 10px;
+  border: 0;
+  border-radius: 8px;
+  background: #334155;
+  color: #f8fafc;
+  cursor: pointer;
+}
+
+.query-bar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.query-bar input,
+.query-bar select,
+.query-bar button {
+  height: 36px;
+  padding: 0 10px;
+}
+
+.pager {
+  margin-top: 12px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.auth-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: #e2e8f0;
+}
+
+.auth-card {
+  width: min(420px, calc(100vw - 32px));
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  display: grid;
+  gap: 10px;
+}
+
+.auth-card label {
+  display: grid;
+  gap: 6px;
+}
+
+.auth-card input {
+  height: 36px;
+  padding: 0 10px;
+}
+
+.auth-card button {
+  height: 36px;
+}
+
+.hint {
+  margin: 0;
+  color: #64748b;
+}
+
+.error-text {
+  color: #b91c1c;
+}
+
+.cards-grid {
+  margin-top: 16px;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
+.card {
+  background: white;
+  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid #e5e7eb;
+}
+
+.table-wrap {
+  margin-top: 16px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  overflow-x: auto;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 12px;
+  border-bottom: 1px solid #f1f5f9;
+  white-space: nowrap;
+}
+
+th {
+  background: #f8fafc;
+  color: #475569;
+  font-weight: 600;
+}
+
+.empty {
+  color: #64748b;
+}
+
+@media (max-width: 900px) {
+  .layout-root {
+    grid-template-columns: 1fr;
+  }
+
+  .layout-sidebar {
+    padding: 16px;
+  }
 }

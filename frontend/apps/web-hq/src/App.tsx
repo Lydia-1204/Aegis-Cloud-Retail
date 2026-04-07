@@ -1,13 +1,35 @@
-import { DEFAULT_API_BASES } from "@aegis/shared";
+import { Navigate, Route, Routes } from "react-router-dom";
+import { RequireAuth, RequireRole } from "./auth/guards";
+import { AppShell } from "./components/AppShell";
+import { AIPage } from "./pages/AIPage";
+import {
+  SkusPage,
+  StoresPage,
+  TransfersPage,
+  UsersPage,
+} from "./pages/DataListPage";
+import { LoginPage } from "./pages/LoginPage";
+import { OverviewPage } from "./pages/OverviewPage";
+import { RealtimePage } from "./pages/RealtimePage";
 
 export function App() {
   return (
-    <main style={{ padding: "1.5rem", fontFamily: "system-ui, sans-serif" }}>
-      <h1>总部端</h1>
-      <p>供货与主数据相关页面由此应用承载。</p>
-      <pre style={{ background: "#f4f4f5", padding: "1rem", borderRadius: 8 }}>
-        {JSON.stringify(DEFAULT_API_BASES, null, 2)}
-      </pre>
-    </main>
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route element={<RequireAuth />}>
+        <Route element={<RequireRole role="Head" />}>
+          <Route element={<AppShell />}>
+            <Route path="/" element={<OverviewPage />} />
+            <Route path="/stores" element={<StoresPage />} />
+            <Route path="/skus" element={<SkusPage />} />
+            <Route path="/users" element={<UsersPage />} />
+            <Route path="/transfers" element={<TransfersPage />} />
+            <Route path="/ai" element={<AIPage />} />
+            <Route path="/realtime" element={<RealtimePage />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Route>
+        </Route>
+      </Route>
+    </Routes>
   );
 }
