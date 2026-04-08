@@ -1,20 +1,34 @@
 import type {
+  AcknowledgeReq,
+  ApiResponse,
+  ConfirmReq,
+  FeedbackReq,
+  InventoryAdjustReq,
   InventoryItem,
   InventoryQuery,
   LoginReq,
   LoginRes,
   PagedData,
+  SKUCategory,
+  SKUCreateReq,
+  SKUUpdateReq,
   SKU,
   SkusQuery,
   SalesDaily,
+  SalesDailyCreateReq,
+  SalesDailyDetail,
+  SalesDailyUpdateReq,
   SalesQuery,
+  StoreCreateReq,
+  StoreUpdateReq,
   Store,
   StoresQuery,
-  StoreDashboard,
-  TrafficLog,
-  TrafficLogsQuery,
   TransferOrder,
+  TransferStatus,
+  TransferCreateReq,
   TransfersQuery,
+  UserCreateReq,
+  UserUpdateReq,
   User,
   UserMe,
   UsersQuery,
@@ -99,6 +113,13 @@ const mockUsers: User[] = [
   },
 ];
 
+const mockSkuCategories: SKUCategory[] = [
+  { category_id: 1, category_name: "饮料" },
+  { category_id: 2, category_name: "零食" },
+  { category_id: 3, category_name: "日用品" },
+  { category_id: 4, category_name: "生鲜" },
+];
+
 const mockSales: SalesDaily[] = [
   {
     sales_id: 1,
@@ -117,6 +138,62 @@ const mockSales: SalesDaily[] = [
     total_profit: 2600,
   },
 ];
+
+let nextSalesId = 3;
+let nextSalesDetailId = 201;
+
+const mockSalesDetails: Record<number, SalesDailyDetail> = {
+  1: {
+    sales_id: 1,
+    store_id: 1,
+    sales_date: "2026-03-14",
+    total_orders: 45,
+    total_income: 12450.5,
+    total_profit: 3200,
+    details: [
+      {
+        detail_id: 101,
+        sales_id: 1,
+        sku_id: 101,
+        sku_name: "可口可乐 330ml",
+        sku_amount: 120,
+        sku_income: 600,
+        sku_profit: 300,
+      },
+      {
+        detail_id: 102,
+        sales_id: 1,
+        sku_id: 102,
+        sku_name: "薯片原味 75g",
+        sku_amount: 80,
+        sku_income: 680,
+        sku_profit: 360,
+      },
+    ],
+  },
+  2: {
+    sales_id: 2,
+    store_id: 1,
+    sales_date: "2026-03-13",
+    total_orders: 38,
+    total_income: 9800,
+    total_profit: 2600,
+    details: [
+      {
+        detail_id: 103,
+        sales_id: 2,
+        sku_id: 103,
+        sku_name: "矿泉水 500ml",
+        sku_amount: 200,
+        sku_income: 400,
+        sku_profit: 240,
+      },
+    ],
+  },
+};
+
+let nextOrderId = 1003;
+let nextTransferDetailId = 601;
 
 const mockInventory: InventoryItem[] = [
   {
@@ -190,57 +267,6 @@ const mockTransfers: TransferOrder[] = [
   },
 ];
 
-const mockTraffic: TrafficLog[] = [
-  {
-    customer_log_id: 301,
-    store_id: 1,
-    record_timestamp: "2026-03-14T14:00:00Z",
-    in_count: 45,
-  },
-  {
-    customer_log_id: 302,
-    store_id: 1,
-    record_timestamp: "2026-03-14T15:00:00Z",
-    in_count: 67,
-  },
-  {
-    customer_log_id: 303,
-    store_id: 1,
-    record_timestamp: "2026-03-14T16:00:00Z",
-    in_count: 32,
-  },
-];
-
-const mockDashboard: StoreDashboard = {
-  store_id: 1,
-  store_name: "葵涌旗舰店",
-  date: "2026-03-14",
-  traffic_summary: {
-    total_in_count: 320,
-    current_in_store: 38,
-    hourly_breakdown: [
-      { hour: 9, in_count: 12 },
-      { hour: 10, in_count: 34 },
-      { hour: 11, in_count: 45 },
-      { hour: 12, in_count: 67 },
-      { hour: 13, in_count: 58 },
-      { hour: 14, in_count: 45 },
-      { hour: 15, in_count: 32 },
-      { hour: 16, in_count: 27 },
-    ],
-  },
-  sales_summary: {
-    total_orders: 40,
-    total_income: 10800,
-    total_profit: 2900,
-    conversion_rate: 0.125,
-  },
-  low_stock_alerts: [
-    { sku_id: 101, sku_name: "可口可乐 330ml", actual_quantity: 23 },
-    { sku_id: 103, sku_name: "矿泉水 500ml", actual_quantity: 8 },
-  ],
-  pending_transfers_count: 1,
-};
 
 function toPaged<T>(data: T[], page = 1, limit = 10): PagedData<T> {
   return {
@@ -287,62 +313,94 @@ function sleep(ms: number): Promise<void> {
   });
 }
 
+function ok<T>(data: T, message = "ok"): ApiResponse<T> {
+  return { code: 0, message, data };
+}
+
 export class AegisMockApi {
-  public async login(payload: LoginReq): Promise<LoginRes> {
+  public async login(payload: LoginReq): Promise<ApiResponse<LoginRes | null>> {
     await sleep(120);
 
     if (payload.account_name === "head001" && payload.password === "123456") {
       return {
-        user_id: 1,
-        account_name: "head001",
-        role_name: "Head",
-        store_id: 0,
-        user_name: "张三",
-        token: "mock-head-token",
+        code: 0,
+        message: "登录成功",
+        data: {
+          user_id: 1,
+          account_name: "head001",
+          role_name: "Head",
+          store_id: 0,
+          user_name: "张三",
+          token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.mock_payload.mock_sig",
+        },
       };
     }
 
     if (payload.account_name === "store001_mgr" && payload.password === "123456") {
       return {
-        user_id: 5,
-        account_name: "store001_mgr",
-        role_name: "Store",
-        store_id: 1,
-        user_name: "李四",
-        token: "mock-store-token",
-      };
-    }
-
-    throw new Error("账号或密码错误");
-  }
-
-  public async me(token: string): Promise<UserMe> {
-    await sleep(100);
-
-    if (token === "mock-head-token") {
-      return {
-        user_id: 1,
-        account_name: "head001",
-        user_name: "张三",
-        role_id: 1,
-        role_name: "Head",
-        store_id: 0,
-        permissions: ["store:manage", "sku:manage", "transfer:approve", "analytics:all"],
+        code: 0,
+        message: "登录成功",
+        data: {
+          user_id: 5,
+          account_name: "store001_mgr",
+          role_name: "Store",
+          store_id: 1,
+          user_name: "李四",
+          token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.mock_store_payload.mock_sig",
+        },
       };
     }
 
     return {
-      user_id: 5,
-      account_name: "store001_mgr",
-      user_name: "李四",
-      role_id: 2,
-      role_name: "Store",
-      store_id: 1,
-      permissions: ["sales:edit", "inventory:edit", "transfer:ack", "traffic:view"],
+      code: 1001,
+      message: "账号或密码错误",
+      data: null,
     };
   }
 
-  public async getStores(query?: StoresQuery): Promise<PagedData<Store>> {
+  public async me(token: string): Promise<ApiResponse<UserMe | null>> {
+    await sleep(100);
+
+    if (token === "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.mock_payload.mock_sig") {
+      return {
+        code: 0,
+        message: "ok",
+        data: {
+          user_id: 1,
+          account_name: "head001",
+          user_name: "张三",
+          role_id: 1,
+          role_name: "Head",
+          store_id: 0,
+          permissions: ["store:manage", "sku:manage", "transfer:approve", "analytics:all"],
+        },
+      };
+    }
+
+    if (token === "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.mock_store_payload.mock_sig") {
+      return {
+        code: 0,
+        message: "ok",
+        data: {
+          user_id: 5,
+          account_name: "store001_mgr",
+          user_name: "李四",
+          role_id: 2,
+          role_name: "Store",
+          store_id: 1,
+          permissions: ["sales:edit", "inventory:edit", "transfer:ack", "traffic:view"],
+        },
+      };
+    }
+
+    return {
+      code: 2001,
+      message: "Token 已过期，请重新登录",
+      data: null,
+    };
+  }
+
+  public async getStores(query?: StoresQuery): Promise<ApiResponse<PagedData<Store>>> {
     await sleep(150);
 
     let rows = [...mockStores];
@@ -351,10 +409,61 @@ export class AegisMockApi {
       rows = rows.filter((x) => x.store_status === query.store_status);
     }
 
-    return toPaged(rows, query?.page ?? 1, query?.limit ?? 10);
+    return ok(toPaged(rows, query?.page ?? 1, query?.limit ?? 10));
   }
 
-  public async getSkus(query?: SkusQuery): Promise<PagedData<SKU>> {
+  public async getStoreById(store_id: number): Promise<ApiResponse<Store | null>> {
+    await sleep(120);
+    const target = mockStores.find((x) => x.store_id === store_id);
+    if (!target) {
+      return { code: 1001, message: "门店不存在", data: null };
+    }
+    return ok(target);
+  }
+
+  public async createStore(payload: StoreCreateReq): Promise<ApiResponse<Store | null>> {
+    await sleep(150);
+    const exists = mockStores.some((x) => x.store_code === payload.store_code);
+    if (exists) {
+      return {
+        code: 1003,
+        message: `门店编码 ${payload.store_code} 已存在`,
+        data: null,
+      };
+    }
+
+    const row: Store = {
+      store_id: Math.max(...mockStores.map((x) => x.store_id)) + 1,
+      ...payload,
+    };
+    mockStores.push(row);
+    return ok(row, "门店创建成功");
+  }
+
+  public async updateStore(
+    store_id: number,
+    payload: StoreUpdateReq
+  ): Promise<ApiResponse<Store | null>> {
+    await sleep(150);
+    const idx = mockStores.findIndex((x) => x.store_id === store_id);
+    if (idx < 0) {
+      return { code: 1001, message: "门店不存在", data: null };
+    }
+    mockStores[idx] = { ...mockStores[idx], ...payload };
+    return ok(mockStores[idx], "更新成功");
+  }
+
+  public async deactivateStore(store_id: number): Promise<ApiResponse<null>> {
+    await sleep(120);
+    const idx = mockStores.findIndex((x) => x.store_id === store_id);
+    if (idx < 0) {
+      return { code: 1001, message: "门店不存在", data: null };
+    }
+    mockStores[idx] = { ...mockStores[idx], store_status: "inactive" };
+    return ok(null, "门店已停用");
+  }
+
+  public async getSkus(query?: SkusQuery): Promise<ApiResponse<PagedData<SKU>>> {
     await sleep(150);
 
     let rows = [...mockSkus];
@@ -363,10 +472,112 @@ export class AegisMockApi {
       rows = rows.filter((x) => x.category_id === query.category_id);
     }
 
-    return toPaged(rows, query?.page ?? 1, query?.limit ?? 10);
+    return ok(toPaged(rows, query?.page ?? 1, query?.limit ?? 10));
   }
 
-  public async getUsers(query?: UsersQuery): Promise<PagedData<User>> {
+  public async getSkuById(sku_id: number): Promise<ApiResponse<SKU | null>> {
+    await sleep(120);
+    const target = mockSkus.find((x) => x.sku_id === sku_id);
+    if (!target) {
+      return { code: 1001, message: "SKU 不存在", data: null };
+    }
+    return ok(target);
+  }
+
+  public async createSku(payload: SKUCreateReq): Promise<ApiResponse<SKU | null>> {
+    await sleep(150);
+    const exists = mockSkus.some((x) => x.sku_code === payload.sku_code);
+    if (exists) {
+      return {
+        code: 1003,
+        message: `SKU 编码 ${payload.sku_code} 已存在`,
+        data: null,
+      };
+    }
+
+    if (payload.sug_price < payload.std_cost && !payload.force) {
+      return {
+        code: 1002,
+        message: `建议售价（${payload.sug_price.toFixed(2)}）低于进价（${payload.std_cost.toFixed(
+          2
+        )}），请确认后重新提交（附带 force: true）`,
+        data: {
+          std_cost: payload.std_cost,
+          sug_price: payload.sug_price,
+          sku_status: payload.sku_status,
+        } as unknown as SKU,
+      };
+    }
+
+    const category = mockSkuCategories.find((x) => x.category_id === payload.category_id);
+    const row: SKU = {
+      sku_id: Math.max(...mockSkus.map((x) => x.sku_id)) + 1,
+      sku_code: payload.sku_code,
+      sku_name: payload.sku_name,
+      category_id: payload.category_id,
+      category_name: category?.category_name ?? "未知分类",
+      std_cost: payload.std_cost,
+      sug_price: payload.sug_price,
+      sku_status: payload.sku_status,
+    };
+    mockSkus.push(row);
+    return ok(row, "SKU 创建成功");
+  }
+
+  public async updateSku(sku_id: number, payload: SKUUpdateReq): Promise<ApiResponse<SKU | null>> {
+    await sleep(150);
+    const idx = mockSkus.findIndex((x) => x.sku_id === sku_id);
+    if (idx < 0) {
+      return { code: 1001, message: "SKU 不存在", data: null };
+    }
+
+    const nextStdCost = payload.std_cost ?? mockSkus[idx].std_cost;
+    const nextSugPrice = payload.sug_price ?? mockSkus[idx].sug_price;
+    if (nextSugPrice < nextStdCost && !payload.force) {
+      return {
+        code: 1002,
+        message: `建议售价（${nextSugPrice.toFixed(2)}）低于进价（${nextStdCost.toFixed(
+          2
+        )}），请确认后重新提交（附带 force: true）`,
+        data: {
+          std_cost: nextStdCost,
+          sug_price: nextSugPrice,
+          sku_status: mockSkus[idx].sku_status,
+        } as unknown as SKU,
+      };
+    }
+
+    let nextCategoryName = mockSkus[idx].category_name;
+    if (payload.category_id !== undefined) {
+      nextCategoryName =
+        mockSkuCategories.find((x) => x.category_id === payload.category_id)?.category_name ??
+        "未知分类";
+    }
+
+    mockSkus[idx] = {
+      ...mockSkus[idx],
+      ...payload,
+      category_name: nextCategoryName,
+    };
+    return ok(mockSkus[idx], "更新成功");
+  }
+
+  public async deactivateSku(sku_id: number): Promise<ApiResponse<null>> {
+    await sleep(120);
+    const idx = mockSkus.findIndex((x) => x.sku_id === sku_id);
+    if (idx < 0) {
+      return { code: 1001, message: "SKU 不存在", data: null };
+    }
+    mockSkus[idx] = { ...mockSkus[idx], sku_status: "unsale" };
+    return ok(null, "SKU 已停用");
+  }
+
+  public async getSkuCategories(): Promise<ApiResponse<SKUCategory[]>> {
+    await sleep(100);
+    return ok(mockSkuCategories);
+  }
+
+  public async getUsers(query?: UsersQuery): Promise<ApiResponse<PagedData<User>>> {
     await sleep(150);
 
     let rows = [...mockUsers];
@@ -377,48 +588,209 @@ export class AegisMockApi {
       rows = rows.filter((x) => x.role_id === query.role_id);
     }
 
-    return toPaged(rows, query?.page ?? 1, query?.limit ?? 10);
+    return ok(toPaged(rows, query?.page ?? 1, query?.limit ?? 10));
   }
 
-  public async getSales(query?: SalesQuery): Promise<PagedData<SalesDaily>> {
+  public async createUser(payload: UserCreateReq): Promise<ApiResponse<User | null>> {
+    await sleep(150);
+    const exists = mockUsers.some((x) => x.account_name === payload.account_name);
+    if (exists) {
+      return { code: 1003, message: `账号 ${payload.account_name} 已存在`, data: null };
+    }
+
+    const row: User = {
+      user_id: Math.max(...mockUsers.map((x) => x.user_id)) + 1,
+      store_id: payload.store_id,
+      role_id: payload.role_id,
+      role_name: payload.role_id === 1 ? "Head" : "Store",
+      user_name: payload.user_name,
+      account_name: payload.account_name,
+    };
+    mockUsers.push(row);
+    return ok(row, "用户创建成功");
+  }
+
+  public async updateUser(user_id: number, payload: UserUpdateReq): Promise<ApiResponse<User | null>> {
+    await sleep(150);
+    const idx = mockUsers.findIndex((x) => x.user_id === user_id);
+    if (idx < 0) {
+      return { code: 1001, message: "用户不存在", data: null };
+    }
+
+    const nextRoleId = payload.role_id ?? mockUsers[idx].role_id;
+    mockUsers[idx] = {
+      ...mockUsers[idx],
+      ...payload,
+      role_name: nextRoleId === 1 ? "Head" : "Store",
+    };
+    return ok(mockUsers[idx], "更新成功");
+  }
+
+  public async getSales(query: SalesQuery): Promise<ApiResponse<PagedData<SalesDaily>>> {
     await sleep(150);
 
     let rows = [...mockSales];
-    if (query?.store_id !== undefined) {
-      rows = rows.filter((x) => x.store_id === query.store_id);
-    }
-    if (query?.sales_date) {
+    rows = rows.filter((x) => x.store_id === query.store_id);
+    if (query.sales_date) {
       rows = rows.filter((x) => x.sales_date === query.sales_date);
     }
-    if (query?.start_date || query?.end_date) {
+    if (query.start_date || query.end_date) {
       rows = rows.filter((x) => inDateRange(x.sales_date, query.start_date, query.end_date));
     }
 
-    return toPaged(rows, query?.page ?? 1, query?.limit ?? 10);
+    return ok(toPaged(rows, query.page ?? 1, query.limit ?? 10));
   }
 
-  public async getInventory(query?: InventoryQuery): Promise<PagedData<InventoryItem>> {
+  public async getSalesById(sales_id: number): Promise<ApiResponse<SalesDailyDetail | null>> {
+    await sleep(120);
+    const row = mockSalesDetails[sales_id];
+    if (!row) {
+      return { code: 1001, message: "销售流水不存在", data: null };
+    }
+    return ok(row);
+  }
+
+  public async createSalesDaily(
+    payload: SalesDailyCreateReq
+  ): Promise<ApiResponse<SalesDailyDetail | null>> {
+    await sleep(150);
+
+    const existing = mockSales.find(
+      (x) => x.store_id === payload.store_id && x.sales_date === payload.sales_date
+    );
+    if (existing && !payload.force_overwrite) {
+      return {
+        code: 1006,
+        message: `${payload.sales_date} 已存在销售记录（sales_id: ${existing.sales_id}），请确认覆盖后传 force_overwrite: true 重新提交`,
+        data: null,
+      };
+    }
+
+    if (existing && payload.force_overwrite) {
+      return this.updateSalesDaily(existing.sales_id, payload);
+    }
+
+    const sales_id = nextSalesId++;
+    const detailRows = payload.details.map((d) => ({
+      detail_id: nextSalesDetailId++,
+      sales_id,
+      sku_id: d.sku_id,
+      sku_name: mockSkus.find((s) => s.sku_id === d.sku_id)?.sku_name ?? "未知SKU",
+      sku_amount: d.sku_amount,
+      sku_income: d.sku_income,
+      sku_profit: d.sku_profit,
+    }));
+
+    const summary: SalesDaily = {
+      sales_id,
+      store_id: payload.store_id,
+      sales_date: payload.sales_date,
+      total_orders: payload.total_orders,
+      total_income: payload.total_income,
+      total_profit: payload.total_profit,
+    };
+
+    const detail: SalesDailyDetail = {
+      ...summary,
+      details: detailRows,
+    };
+
+    mockSales.push(summary);
+    mockSalesDetails[sales_id] = detail;
+    return ok(detail, "销售流水提交成功");
+  }
+
+  public async updateSalesDaily(
+    sales_id: number,
+    payload: SalesDailyUpdateReq
+  ): Promise<ApiResponse<SalesDailyDetail | null>> {
+    await sleep(150);
+    const idx = mockSales.findIndex((x) => x.sales_id === sales_id);
+    if (idx < 0) {
+      return { code: 1001, message: "销售流水不存在", data: null };
+    }
+
+    const detailRows = payload.details.map((d) => ({
+      detail_id: nextSalesDetailId++,
+      sales_id,
+      sku_id: d.sku_id,
+      sku_name: mockSkus.find((s) => s.sku_id === d.sku_id)?.sku_name ?? "未知SKU",
+      sku_amount: d.sku_amount,
+      sku_income: d.sku_income,
+      sku_profit: d.sku_profit,
+    }));
+
+    const summary: SalesDaily = {
+      sales_id,
+      store_id: payload.store_id,
+      sales_date: payload.sales_date,
+      total_orders: payload.total_orders,
+      total_income: payload.total_income,
+      total_profit: payload.total_profit,
+    };
+
+    mockSales[idx] = summary;
+    mockSalesDetails[sales_id] = { ...summary, details: detailRows };
+    return ok(mockSalesDetails[sales_id], "更新成功");
+  }
+
+  public async getInventory(query: InventoryQuery): Promise<ApiResponse<PagedData<InventoryItem>>> {
     await sleep(150);
 
     let rows = [...mockInventory];
-    if (query?.store_id !== undefined) {
-      rows = rows.filter((x) => x.store_id === query.store_id);
-    }
-    rows = filterByKeyword(rows, query?.keyword, (x) => `${x.sku_name} ${x.sku_code}`);
-    if (query?.category_id) {
+    rows = rows.filter((x) => x.store_id === query.store_id);
+    rows = filterByKeyword(rows, query.keyword, (x) => `${x.sku_name} ${x.sku_code}`);
+    if (query.category_id) {
       rows = rows.filter((x) => {
         const sku = mockSkus.find((s) => s.sku_id === x.sku_id);
         return sku?.category_id === query.category_id;
       });
     }
-    if (query?.low_stock) {
+    if (query.low_stock) {
       rows = rows.filter((x) => x.actual_quantity < 20);
     }
 
-    return toPaged(rows, query?.page ?? 1, query?.limit ?? 10);
+    return ok(toPaged(rows, query.page ?? 1, query.limit ?? 10));
   }
 
-  public async getTransfers(query?: TransfersQuery): Promise<PagedData<TransferOrder>> {
+  public async adjustInventory(
+    payload: InventoryAdjustReq
+  ): Promise<ApiResponse<InventoryItem | null>> {
+    await sleep(150);
+
+    const idx = mockInventory.findIndex(
+      (x) => x.store_id === payload.store_id && x.sku_id === payload.sku_id
+    );
+    if (idx < 0) {
+      return { code: 1001, message: "库存记录不存在", data: null };
+    }
+
+    if (mockInventory[idx].is_locked) {
+      return {
+        code: 1005,
+        message: `SKU ${payload.sku_id}（${mockInventory[idx].sku_name}）正在参与调拨流程，暂时无法修改库存`,
+        data: null,
+      };
+    }
+
+    const current = mockInventory[idx].actual_quantity;
+    const ratio = current === 0 ? 1 : Math.abs(payload.actual_quantity - current) / current;
+    if (ratio > 0.3 && !payload.remark?.trim()) {
+      return {
+        code: 1007,
+        message: `修正幅度超过 30%（当前库存：${current}，修正后：${payload.actual_quantity}），请在 remark 字段填写原因后重新提交`,
+        data: null,
+      };
+    }
+
+    mockInventory[idx] = {
+      ...mockInventory[idx],
+      actual_quantity: payload.actual_quantity,
+    };
+    return ok(mockInventory[idx], "库存修正成功");
+  }
+
+  public async getTransfers(query?: TransfersQuery): Promise<ApiResponse<PagedData<TransferOrder>>> {
     await sleep(150);
 
     let rows = [...mockTransfers];
@@ -428,40 +800,162 @@ export class AegisMockApi {
     if (query?.status) {
       rows = rows.filter((x) => x.status === query.status);
     }
+    if (query?.start_date || query?.end_date) {
+      rows = rows.filter((x) => {
+        const d = String(x.order_id);
+        return inDateRange(`2026-03-${d.slice(-2)}`, query.start_date, query.end_date);
+      });
+    }
 
-    return toPaged(rows, query?.page ?? 1, query?.limit ?? 10);
+    return ok(toPaged(rows, query?.page ?? 1, query?.limit ?? 10));
   }
 
-  public async getTrafficLogs(query?: TrafficLogsQuery): Promise<PagedData<TrafficLog>> {
+  public async createTransfer(
+    payload: TransferCreateReq
+  ): Promise<ApiResponse<TransferOrder | null>> {
     await sleep(150);
+    const storeName = mockStores.find((x) => x.store_id === payload.store_id)?.store_name ?? "未知门店";
+    const order_id = nextOrderId++;
+    const details = payload.details.map((d) => ({
+      detail_id: nextTransferDetailId++,
+      order_id,
+      sku_id: d.sku_id,
+      sku_name: mockSkus.find((s) => s.sku_id === d.sku_id)?.sku_name ?? "未知SKU",
+      suggested_qty: d.suggested_qty,
+      actual_qty: d.actual_qty,
+      transfer_direction: d.transfer_direction,
+    }));
 
-    let rows = [...mockTraffic];
-    if (query?.store_id !== undefined) {
-      rows = rows.filter((x) => x.store_id === query.store_id);
-    }
-    if (query?.date) {
-      rows = rows.filter((x) => x.record_timestamp.startsWith(query.date ?? ""));
-    }
-    if (query?.start_time || query?.end_time) {
-      rows = rows.filter((x) =>
-        inDateRange(x.record_timestamp, query.start_time, query.end_time)
-      );
-    }
-
-    return toPaged(rows, query?.page ?? 1, query?.limit ?? 100);
-  }
-
-  public async getStoreDashboard(storeId = 1): Promise<StoreDashboard> {
-    await sleep(120);
-    if (storeId === 1) {
-      return mockDashboard;
-    }
-
-    const store = mockStores.find((x) => x.store_id === storeId) ?? mockStores[0];
-    return {
-      ...mockDashboard,
-      store_id: store.store_id,
-      store_name: store.store_name,
+    const row: TransferOrder = {
+      order_id,
+      store_id: payload.store_id,
+      store_name: storeName,
+      status: "pending_approval",
+      feedback: null,
+      details,
     };
+    mockTransfers.push(row);
+    return ok(row, "调拨单创建成功");
   }
+
+  private updateTransferStatus(
+    order_id: number,
+    from: TransferStatus[],
+    to: TransferStatus,
+    message: string
+  ): ApiResponse<TransferOrder | null> {
+    const idx = mockTransfers.findIndex((x) => x.order_id === order_id);
+    if (idx < 0) {
+      return { code: 1001, message: "调拨单不存在", data: null };
+    }
+    if (!from.includes(mockTransfers[idx].status)) {
+      return {
+        code: 1004,
+        message: `当前状态为 ${mockTransfers[idx].status}，不允许执行此操作`,
+        data: null,
+      };
+    }
+    mockTransfers[idx] = { ...mockTransfers[idx], status: to };
+    return ok(mockTransfers[idx], message);
+  }
+
+  public async issueTransfer(order_id: number): Promise<ApiResponse<TransferOrder | null>> {
+    await sleep(120);
+    return this.updateTransferStatus(
+      order_id,
+      ["pending_approval"],
+      "issued_pending_confirmation",
+      "调拨单已下发，等待门店确认"
+    );
+  }
+
+  public async acknowledgeTransfer(
+    order_id: number,
+    payload: AcknowledgeReq
+  ): Promise<ApiResponse<TransferOrder | null>> {
+    await sleep(120);
+    const result = this.updateTransferStatus(
+      order_id,
+      ["issued_pending_confirmation"],
+      "confirmed_executed",
+      "调拨单已确认，库存已同步更新"
+    );
+    if (result.code !== 0 || !result.data) {
+      return result;
+    }
+    if (payload.details?.length) {
+      const map = new Map(payload.details.map((x) => [x.detail_id, x.actual_qty]));
+      result.data.details = result.data.details.map((d) => ({
+        ...d,
+        actual_qty: map.get(d.detail_id) ?? d.actual_qty,
+      }));
+    }
+    return result;
+  }
+
+  public async feedbackTransfer(
+    order_id: number,
+    payload: FeedbackReq
+  ): Promise<ApiResponse<TransferOrder | null>> {
+    await sleep(120);
+    const idx = mockTransfers.findIndex((x) => x.order_id === order_id);
+    if (idx < 0) {
+      return { code: 1001, message: "调拨单不存在", data: null };
+    }
+    if (mockTransfers[idx].status !== "issued_pending_confirmation") {
+      return {
+        code: 1004,
+        message: `当前状态为 ${mockTransfers[idx].status}，不允许执行此操作`,
+        data: null,
+      };
+    }
+    mockTransfers[idx] = {
+      ...mockTransfers[idx],
+      status: "in_negotiation",
+      feedback: payload.feedback,
+    };
+    return ok(mockTransfers[idx], "异议已提交，等待总部处理");
+  }
+
+  public async confirmTransfer(
+    order_id: number,
+    payload: ConfirmReq
+  ): Promise<ApiResponse<TransferOrder | null>> {
+    await sleep(120);
+    const result = this.updateTransferStatus(
+      order_id,
+      ["in_negotiation"],
+      "issued_pending_confirmation",
+      "已修改调拨数量并重新下发，等待门店确认"
+    );
+    if (result.code !== 0 || !result.data) {
+      return result;
+    }
+    if (payload.details?.length) {
+      const map = new Map(payload.details.map((x) => [x.detail_id, x.actual_qty]));
+      result.data.details = result.data.details.map((d) => ({
+        ...d,
+        actual_qty: map.get(d.detail_id) ?? d.actual_qty,
+      }));
+    }
+    return result;
+  }
+
+  public async cancelTransfer(order_id: number): Promise<ApiResponse<null>> {
+    await sleep(120);
+    const idx = mockTransfers.findIndex((x) => x.order_id === order_id);
+    if (idx < 0) {
+      return { code: 1001, message: "调拨单不存在", data: null };
+    }
+    if (["confirmed_executed", "cancelled"].includes(mockTransfers[idx].status)) {
+      return {
+        code: 1004,
+        message: `当前状态为 ${mockTransfers[idx].status}，不允许执行此操作`,
+        data: null,
+      };
+    }
+    mockTransfers[idx] = { ...mockTransfers[idx], status: "cancelled" };
+    return ok(null, "调拨单已作废");
+  }
+
 }

@@ -1,7 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { RequireAuth, RequireRole } from "./auth/guards";
 import { AppShell } from "./components/AppShell";
-import { AIPage } from "./pages/AIPage";
 import {
   SkusPage,
   StoresPage,
@@ -10,7 +9,6 @@ import {
 } from "./pages/DataListPage";
 import { LoginPage } from "./pages/LoginPage";
 import { OverviewPage } from "./pages/OverviewPage";
-import { RealtimePage } from "./pages/RealtimePage";
 
 export function App() {
   return (
@@ -24,8 +22,6 @@ export function App() {
             <Route path="/skus" element={<SkusPage />} />
             <Route path="/users" element={<UsersPage />} />
             <Route path="/transfers" element={<TransfersPage />} />
-            <Route path="/ai" element={<AIPage />} />
-            <Route path="/realtime" element={<RealtimePage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Route>

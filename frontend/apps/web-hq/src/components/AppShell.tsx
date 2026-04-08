@@ -7,8 +7,6 @@ const navItems: Array<{ to: string; label: string }> = [
   { to: "/skus", label: "SKU目录" },
   { to: "/users", label: "用户管理" },
   { to: "/transfers", label: "调拨审核" },
-  { to: "/ai", label: "AI 助手" },
-  { to: "/realtime", label: "实时推送" },
 ];
 
 export function AppShell() {
