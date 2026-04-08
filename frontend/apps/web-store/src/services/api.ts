@@ -66,6 +66,13 @@ function unwrapMockEnvelope<T>(payload: ApiResponse<T | null>): T {
   return payload.data;
 }
 
+function unwrapMockEnvelopeNullable<T>(payload: ApiResponse<T>): T {
+  if (payload.code !== 0) {
+    throw new HttpError(statusFromCode(payload.code), payload.message || "请求失败");
+  }
+  return payload.data;
+}
+
 function authedHttp(): AegisHttpClient {
   return httpWithToken(readAuthToken());
 }
@@ -176,7 +183,8 @@ export async function createTransfer(payload: TransferCreateReq): Promise<Transf
 async function patchTransfer<TReq extends object, TRes>(
   order_id: number,
   action: "issue" | "acknowledge" | "feedback" | "confirm" | "cancel",
-  body?: TReq
+  body?: TReq,
+  allowNullData = false
 ): Promise<TRes> {
   const res = await fetch(`${DEFAULT_API_BASES.storeOps}/transfers/${order_id}/${action}`, {
     method: "PATCH",
@@ -187,10 +195,10 @@ async function patchTransfer<TReq extends object, TRes>(
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
   const payloadRes = (await res.json()) as ApiResponse<TRes | null>;
-  if (!res.ok || payloadRes.code !== 0 || payloadRes.data === null) {
+  if (!res.ok || payloadRes.code !== 0 || (!allowNullData && payloadRes.data === null)) {
     throw new HttpError(res.status, payloadRes.message || "请求失败");
   }
-  return payloadRes.data;
+  return payloadRes.data as TRes;
 }
 
 export async function issueTransfer(order_id: number): Promise<TransferOrder> {
@@ -231,7 +239,7 @@ export async function confirmTransfer(order_id: number, payload: ConfirmReq): Pr
 export async function cancelTransfer(order_id: number): Promise<null> {
   if (useMock) {
     const res = await mockApi.cancelTransfer(order_id);
-    return unwrapMockEnvelope(res);
+    return unwrapMockEnvelopeNullable(res);
   }
-  return patchTransfer<{}, null>(order_id, "cancel");
+  return patchTransfer<{}, null>(order_id, "cancel", undefined, true);
 }
