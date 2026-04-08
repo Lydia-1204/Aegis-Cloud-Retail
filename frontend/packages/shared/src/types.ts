@@ -16,15 +16,11 @@ export interface PagedData<T> {
 export interface ApiBases {
   foundationData: string;
   storeOps: string;
-  trafficSense: string;
-  aiAssistant: string;
 }
 
 export const DEFAULT_API_BASES: ApiBases = {
-  foundationData: "http://localhost:8081/api",
+  foundationData: "http://localhost:8080/api",
   storeOps: "http://localhost:8082/api",
-  trafficSense: "http://localhost:8083/api",
-  aiAssistant: "http://localhost:8084/api",
 };
 
 export interface LoginReq {
@@ -73,7 +69,7 @@ export interface UsersQuery {
 }
 
 export interface SalesQuery {
-  store_id?: number;
+  store_id: number;
   sales_date?: string;
   start_date?: string;
   end_date?: string;
@@ -82,7 +78,7 @@ export interface SalesQuery {
 }
 
 export interface InventoryQuery {
-  store_id?: number;
+  store_id: number;
   keyword?: string;
   category_id?: number;
   low_stock?: boolean;
@@ -93,15 +89,8 @@ export interface InventoryQuery {
 export interface TransfersQuery {
   store_id?: number;
   status?: TransferStatus;
-  page?: number;
-  limit?: number;
-}
-
-export interface TrafficLogsQuery {
-  store_id?: number;
-  date?: string;
-  start_time?: string;
-  end_time?: string;
+  start_date?: string;
+  end_date?: string;
   page?: number;
   limit?: number;
 }
@@ -126,6 +115,11 @@ export interface SKU {
   sku_status: "sale" | "unsale";
 }
 
+export interface SKUCategory {
+  category_id: number;
+  category_name: string;
+}
+
 export interface User {
   user_id: number;
   store_id: number;
@@ -133,6 +127,53 @@ export interface User {
   role_name: RoleName;
   user_name: string;
   account_name: string;
+}
+
+export interface StoreCreateReq {
+  store_code: string;
+  store_name: string;
+  store_location: string;
+  store_area: number;
+  store_status: "active" | "inactive";
+}
+
+export interface StoreUpdateReq {
+  store_name?: string;
+  store_location?: string;
+  store_area?: number;
+  store_status?: "active" | "inactive";
+}
+
+export interface SKUCreateReq {
+  sku_code: string;
+  sku_name: string;
+  category_id: number;
+  std_cost: number;
+  sug_price: number;
+  force?: boolean;
+  sku_status: "sale";
+}
+
+export interface SKUUpdateReq {
+  sku_name?: string;
+  category_id?: number;
+  std_cost?: number;
+  sug_price?: number;
+  force?: boolean;
+}
+
+export interface UserCreateReq {
+  store_id: number;
+  role_id: number;
+  user_name: string;
+  account_name: string;
+  password: string;
+}
+
+export interface UserUpdateReq {
+  store_id?: number;
+  role_id?: number;
+  user_name?: string;
 }
 
 export interface SalesDaily {
@@ -144,6 +185,37 @@ export interface SalesDaily {
   total_profit: number;
 }
 
+export interface SalesDetail {
+  detail_id: number;
+  sales_id: number;
+  sku_id: number;
+  sku_name: string;
+  sku_amount: number;
+  sku_income: number;
+  sku_profit: number;
+}
+
+export interface SalesDailyDetail extends SalesDaily {
+  details: SalesDetail[];
+}
+
+export interface SalesDailyCreateReq {
+  store_id: number;
+  sales_date: string;
+  total_orders: number;
+  total_income: number;
+  total_profit: number;
+  force_overwrite: boolean;
+  details: Array<{
+    sku_id: number;
+    sku_amount: number;
+    sku_income: number;
+    sku_profit: number;
+  }>;
+}
+
+export type SalesDailyUpdateReq = SalesDailyCreateReq;
+
 export interface InventoryItem {
   inventory_id: number;
   store_id: number;
@@ -153,6 +225,15 @@ export interface InventoryItem {
   category_name: string;
   actual_quantity: number;
   is_locked: boolean;
+}
+
+export interface InventoryAdjustReq {
+  store_id: number;
+  sku_id: number;
+  actual_quantity: number;
+  inventory_diagonsis_result_type: "Normal" | "Shortage" | "Unsale";
+  inventory_root_cause: object;
+  remark?: string;
 }
 
 export type TransferStatus =
@@ -182,35 +263,30 @@ export interface TransferOrder {
   details: TransferDetail[];
 }
 
-export interface TrafficLog {
-  customer_log_id: number;
+export interface TransferCreateReq {
   store_id: number;
-  record_timestamp: string;
-  in_count: number;
+  details: Array<{
+    sku_id: number;
+    suggested_qty: number;
+    actual_qty: number;
+    transfer_direction: "H2S" | "S2H";
+  }>;
 }
 
-export interface StoreDashboard {
-  store_id: number;
-  store_name: string;
-  date: string;
-  traffic_summary: {
-    total_in_count: number;
-    current_in_store: number;
-    hourly_breakdown: Array<{
-      hour: number;
-      in_count: number;
-    }>;
-  };
-  sales_summary: {
-    total_orders: number;
-    total_income: number;
-    total_profit: number;
-    conversion_rate: number;
-  };
-  low_stock_alerts: Array<{
-    sku_id: number;
-    sku_name: string;
-    actual_quantity: number;
+export interface AcknowledgeReq {
+  details?: Array<{
+    detail_id: number;
+    actual_qty: number;
   }>;
-  pending_transfers_count: number;
+}
+
+export interface FeedbackReq {
+  feedback: string;
+}
+
+export interface ConfirmReq {
+  details?: Array<{
+    detail_id: number;
+    actual_qty: number;
+  }>;
 }

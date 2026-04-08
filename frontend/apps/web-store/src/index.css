@@ -141,6 +141,10 @@ a {
   color: #b91c1c;
 }
 
+.success-text {
+  color: #166534;
+}
+
 .cards-grid {
   margin-top: 16px;
   display: grid;
@@ -182,6 +186,77 @@ th {
 
 .empty {
   color: #64748b;
+}
+
+.ops-grid {
+  margin-top: 12px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+}
+
+.op-card {
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.op-card h3 {
+  margin: 0 0 10px;
+  font-size: 15px;
+}
+
+.form-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.form-grid input,
+.form-grid select,
+.form-grid button {
+  height: 36px;
+  padding: 0 10px;
+}
+
+.check-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.detail-box {
+  margin-top: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 10px;
+}
+
+.detail-box pre {
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.table-actions {
+  margin-top: 8px;
+  display: grid;
+  gap: 6px;
+}
+
+.row-action {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.row-action button {
+  height: 30px;
+  padding: 0 10px;
 }
 
 @media (max-width: 900px) {
