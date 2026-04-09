@@ -898,6 +898,14 @@ export function TransfersPage() {
   const [total, setTotal] = useState(0);
   const [storeId, setStoreId] = useState("");
   const [status, setStatus] = useState<"" | TransferOrder["status"]>("");
+  const transferStatusOptions: TransferOrder["status"][] = [
+    "ai_generated",
+    "pending_approval",
+    "issued_pending_confirmation",
+    "in_negotiation",
+    "confirmed_executed",
+    "cancelled",
+  ];
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [createForm, setCreateForm] = useState({
@@ -1017,14 +1025,20 @@ export function TransfersPage() {
             setStoreId(e.target.value);
           }}
         />
-        <input
-          placeholder="状态"
+        <select
           value={status}
           onChange={(e) => {
             setPage(1);
             setStatus(e.target.value as "" | TransferOrder["status"]);
           }}
-        />
+        >
+          <option value="">全部状态</option>
+          {transferStatusOptions.map((item) => (
+            <option key={item} value={item}>
+              {item}
+            </option>
+          ))}
+        </select>
         <input
           placeholder="start_date"
           value={startDate}

@@ -16,12 +16,63 @@ export interface PagedData<T> {
 export interface ApiBases {
   foundationData: string;
   storeOps: string;
+  trafficSense: string;
+  aiAssistant: string;
 }
 
 export const DEFAULT_API_BASES: ApiBases = {
   foundationData: "http://localhost:8080/api",
-  storeOps: "http://localhost:8082/api",
+  storeOps: "http://localhost:8080/api",
+  trafficSense: "http://localhost:8080/api",
+  aiAssistant: "http://localhost:8080/api",
 };
+
+export interface TrafficTickData {
+  current_people_count: number;
+}
+
+export interface WSTrafficUpdate {
+  event: "TRAFFIC_TICK";
+  store_id: number;
+  data: TrafficTickData;
+}
+
+export interface ChatCompletionReq {
+  store_id: number;
+  session_id: string | null;
+  query: string;
+}
+
+export interface ChatCompletionChunk {
+  session_id: string;
+  content: string;
+  is_finish: boolean;
+}
+
+export interface ChatSessionsQuery {
+  store_id: number;
+  limit?: number;
+}
+
+export interface ChatSessionItem {
+  session_id: string;
+  title: string;
+  session_time: string;
+}
+
+export type ChatSessionListData = PagedData<ChatSessionItem>;
+
+export interface ChatMessage {
+  role: "user" | "assistant";
+  content: string;
+  chat_time: string;
+}
+
+export interface ChatHistoryRes {
+  session_id: string;
+  store_id: number;
+  messages: ChatMessage[];
+}
 
 export interface LoginReq {
   account_name: string;

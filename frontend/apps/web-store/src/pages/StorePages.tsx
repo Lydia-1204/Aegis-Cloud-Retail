@@ -1,8 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import type {
+  ChatMessage,
+  ChatSessionItem,
   InventoryAdjustReq,
   InventoryItem,
+  SKU,
+  SKUCategory,
   SalesDaily,
   SalesDailyDetail,
   TransferOrder,
@@ -15,7 +19,13 @@ import {
   fetchInventory,
   fetchSalesDailyDetail,
   fetchSalesDaily,
+  fetchChatHistory,
+  fetchChatSessions,
+  fetchSkuCategories,
+  fetchSkus,
   fetchTransfers,
+  streamChatCompletions,
+  subscribeTrafficRealtime,
   updateSalesDaily,
 } from "../services/api";
 
@@ -104,6 +114,7 @@ export function SalesPage() {
   const [endDate, setEndDate] = useState("");
   const [detail, setDetail] = useState<SalesDailyDetail | null>(null);
   const [detailId, setDetailId] = useState("");
+  const [skuOptions, setSkuOptions] = useState<SKU[]>([]);
   const [createForm, setCreateForm] = useState({
     sales_date: "",
     total_orders: "",
@@ -146,6 +157,15 @@ export function SalesPage() {
   useEffect(() => {
     void loadSales();
   }, [page, limit, salesDate, startDate, endDate, me]);
+
+  useEffect(() => {
+    if (!me) {
+      return;
+    }
+    fetchSkus({ page: 1, limit: 200 })
+      .then((res) => setSkuOptions(res.data))
+      .catch(() => setSkuOptions([]));
+  }, [me]);
 
   async function onFetchDetail() {
     const sales_id = Number(detailId);
@@ -294,11 +314,17 @@ export function SalesPage() {
               value={createForm.total_profit}
               onChange={(e) => setCreateForm((s) => ({ ...s, total_profit: e.target.value }))}
             />
-            <input
-              placeholder="detail.sku_id"
+            <select
               value={createForm.sku_id}
               onChange={(e) => setCreateForm((s) => ({ ...s, sku_id: e.target.value }))}
-            />
+            >
+              <option value="">detail.sku_id</option>
+              {skuOptions.map((sku) => (
+                <option key={sku.sku_id} value={String(sku.sku_id)}>
+                  {sku.sku_code} - {sku.sku_name}
+                </option>
+              ))}
+            </select>
             <input
               placeholder="detail.sku_amount"
               value={createForm.sku_amount}
@@ -357,11 +383,17 @@ export function SalesPage() {
               value={updateForm.total_profit}
               onChange={(e) => setUpdateForm((s) => ({ ...s, total_profit: e.target.value }))}
             />
-            <input
-              placeholder="detail.sku_id"
+            <select
               value={updateForm.sku_id}
               onChange={(e) => setUpdateForm((s) => ({ ...s, sku_id: e.target.value }))}
-            />
+            >
+              <option value="">detail.sku_id</option>
+              {skuOptions.map((sku) => (
+                <option key={sku.sku_id} value={String(sku.sku_id)}>
+                  {sku.sku_code} - {sku.sku_name}
+                </option>
+              ))}
+            </select>
             <input
               placeholder="detail.sku_amount"
               value={updateForm.sku_amount}
@@ -418,6 +450,8 @@ export function InventoryPage() {
   const [keyword, setKeyword] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [lowStock, setLowStock] = useState(false);
+  const [skuOptions, setSkuOptions] = useState<SKU[]>([]);
+  const [categories, setCategories] = useState<SKUCategory[]>([]);
   const [adjustForm, setAdjustForm] = useState({
     sku_id: "",
     actual_quantity: "",
@@ -435,7 +469,7 @@ export function InventoryPage() {
       store_id: me?.store_id ?? 1,
       keyword: keyword || undefined,
       category_id: categoryId ? Number(categoryId) : undefined,
-      low_stock: lowStock,
+      low_stock: lowStock ? true : undefined,
     });
     setRows(res.data);
     setTotal(res.total);
@@ -444,6 +478,18 @@ export function InventoryPage() {
   useEffect(() => {
     void loadInventory();
   }, [page, limit, keyword, categoryId, lowStock, me]);
+
+  useEffect(() => {
+    if (!me) {
+      return;
+    }
+    fetchSkus({ page: 1, limit: 200 })
+      .then((res) => setSkuOptions(res.data))
+      .catch(() => setSkuOptions([]));
+    fetchSkuCategories()
+      .then((res) => setCategories(res))
+      .catch(() => setCategories([]));
+  }, [me]);
 
   async function onAdjustInventory() {
     setMessage("");
@@ -479,14 +525,20 @@ export function InventoryPage() {
             setKeyword(e.target.value);
           }}
         />
-        <input
-          placeholder="分类ID"
+        <select
           value={categoryId}
           onChange={(e) => {
             setPage(1);
             setCategoryId(e.target.value);
           }}
-        />
+        >
+          <option value="">全部分类</option>
+          {categories.map((category) => (
+            <option key={category.category_id} value={String(category.category_id)}>
+              {category.category_name}
+            </option>
+          ))}
+        </select>
         <label className="checkbox-row">
           <input
             type="checkbox"
@@ -503,11 +555,17 @@ export function InventoryPage() {
         <div className="op-card">
           <h3>库存修正（POST /inventory/adjust）</h3>
           <div className="form-grid">
-            <input
-              placeholder="sku_id"
+            <select
               value={adjustForm.sku_id}
               onChange={(e) => setAdjustForm((s) => ({ ...s, sku_id: e.target.value }))}
-            />
+            >
+              <option value="">sku_id</option>
+              {skuOptions.map((sku) => (
+                <option key={sku.sku_id} value={String(sku.sku_id)}>
+                  {sku.sku_code} - {sku.sku_name}
+                </option>
+              ))}
+            </select>
             <input
               placeholder="actual_quantity"
               value={adjustForm.actual_quantity}
@@ -571,6 +629,14 @@ export function TransfersPage() {
   const [limit] = useState(10);
   const [total, setTotal] = useState(0);
   const [status, setStatus] = useState<"" | TransferOrder["status"]>("");
+  const transferStatusOptions: TransferOrder["status"][] = [
+    "ai_generated",
+    "pending_approval",
+    "issued_pending_confirmation",
+    "in_negotiation",
+    "confirmed_executed",
+    "cancelled",
+  ];
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [ackForm, setAckForm] = useState({ order_id: "", detail_id: "", actual_qty: "" });
@@ -646,14 +712,20 @@ export function TransfersPage() {
       {message ? <p className="success-text">{message}</p> : null}
       {error ? <p className="error-text">{error}</p> : null}
       <div className="query-bar">
-        <input
-          placeholder="状态"
+        <select
           value={status}
           onChange={(e) => {
             setPage(1);
             setStatus(e.target.value as "" | TransferOrder["status"]);
           }}
-        />
+        >
+          <option value="">全部状态</option>
+          {transferStatusOptions.map((item) => (
+            <option key={item} value={item}>
+              {item}
+            </option>
+          ))}
+        </select>
         <input
           placeholder="start_date"
           value={startDate}
@@ -729,6 +801,238 @@ export function TransfersPage() {
         onPrev={() => setPage((p) => p - 1)}
         onNext={() => setPage((p) => p + 1)}
       />
+    </section>
+  );
+}
+
+export function TrafficPage() {
+  const { me } = useAuth();
+  const [currentPeopleCount, setCurrentPeopleCount] = useState<number>(0);
+  const [status, setStatus] = useState<"connecting" | "connected" | "closed" | "error">(
+    "connecting"
+  );
+  const [error, setError] = useState("");
+  const [lastEvent, setLastEvent] = useState("-");
+
+  useEffect(() => {
+    if (!me?.store_id) {
+      setStatus("error");
+      setError("未获取到 store_id，无法订阅实时客流");
+      return;
+    }
+
+    setStatus("connecting");
+    setError("");
+    const cleanup = subscribeTrafficRealtime(me.store_id, {
+      onOpen: () => {
+        setStatus("connected");
+      },
+      onTick: (payload) => {
+        setCurrentPeopleCount(payload.data.current_people_count);
+        setLastEvent(payload.event);
+      },
+      onError: (message) => {
+        setStatus("error");
+        setError(message);
+      },
+      onClose: () => {
+        setStatus("closed");
+      },
+    });
+
+    return () => {
+      cleanup();
+    };
+  }, [me?.store_id]);
+
+  return (
+    <section>
+      <h2>实时客流感知</h2>
+      <p>
+        订阅接口：<strong>WS /api/ai/traffic/realtime/:store_id?token=&lt;JWT&gt;</strong>
+      </p>
+      {error ? <p className="error-text">{error}</p> : null}
+      <div className="cards-grid">
+        <article className="card">
+          <h3>store_id</h3>
+          <p>{me?.store_id ?? "-"}</p>
+        </article>
+        <article className="card">
+          <h3>event</h3>
+          <p>{lastEvent}</p>
+        </article>
+        <article className="card">
+          <h3>data.current_people_count</h3>
+          <p>{currentPeopleCount}</p>
+        </article>
+        <article className="card">
+          <h3>连接状态</h3>
+          <p>{status}</p>
+        </article>
+      </div>
+    </section>
+  );
+}
+
+export function ChatPage() {
+  const { me } = useAuth();
+  const [sessions, setSessions] = useState<ChatSessionItem[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [query, setQuery] = useState("");
+  const [streamingContent, setStreamingContent] = useState("");
+  const [error, setError] = useState("");
+  const [sending, setSending] = useState(false);
+  const stopStreamRef = useRef<(() => void) | null>(null);
+
+  async function loadSessions() {
+    if (!me?.store_id) {
+      return;
+    }
+    const res = await fetchChatSessions({ store_id: me.store_id, limit: 20 });
+    setSessions(res.data);
+    if (!activeSessionId && res.data.length > 0) {
+      setActiveSessionId(res.data[0].session_id);
+    }
+  }
+
+  async function loadHistory(session_id: string) {
+    const res = await fetchChatHistory(session_id);
+    setMessages(res.messages);
+  }
+
+  useEffect(() => {
+    void loadSessions().catch((err) => setError(parseError(err)));
+  }, [me?.store_id]);
+
+  useEffect(() => {
+    if (!activeSessionId) {
+      setMessages([]);
+      return;
+    }
+    void loadHistory(activeSessionId).catch((err) => setError(parseError(err)));
+  }, [activeSessionId]);
+
+  useEffect(() => {
+    return () => {
+      stopStreamRef.current?.();
+    };
+  }, []);
+
+  function onSend() {
+    const text = query.trim();
+    if (!text) {
+      setError("query 不能为空");
+      return;
+    }
+    if (!me?.store_id) {
+      setError("未获取到 store_id");
+      return;
+    }
+
+    stopStreamRef.current?.();
+    setError("");
+    setSending(true);
+    setStreamingContent("");
+    setQuery("");
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: "user",
+        content: text,
+        chat_time: new Date().toISOString(),
+      },
+    ]);
+
+    stopStreamRef.current = streamChatCompletions(
+      {
+        store_id: me.store_id,
+        session_id: activeSessionId,
+        query: text,
+      },
+      {
+        onChunk: (chunk) => {
+          if (!chunk.is_finish) {
+            setStreamingContent((prev) => prev + chunk.content);
+            return;
+          }
+
+          setSending(false);
+          setStreamingContent("");
+          setActiveSessionId(chunk.session_id);
+          void loadSessions().catch((err) => setError(parseError(err)));
+          void loadHistory(chunk.session_id).catch((err) => setError(parseError(err)));
+        },
+        onError: (message) => {
+          setSending(false);
+          setError(message);
+        },
+      }
+    );
+  }
+
+  return (
+    <section>
+      <h2>AI 助手对话</h2>
+      <p>
+        已对齐接口：POST /api/ai/chat/completions、GET /api/ai/chat/sessions、GET
+        /api/ai/chat/history
+      </p>
+      {error ? <p className="error-text">{error}</p> : null}
+
+      <div className="ops-grid">
+        <div className="op-card">
+          <h3>会话列表（GET /api/ai/chat/sessions）</h3>
+          <div className="table-actions">
+            {sessions.length === 0 ? <p className="empty">暂无历史会话</p> : null}
+            {sessions.map((item) => (
+              <button
+                key={item.session_id}
+                type="button"
+                onClick={() => setActiveSessionId(item.session_id)}
+              >
+                {item.title} ({item.session_time})
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="op-card">
+          <h3>发起对话（POST /api/ai/chat/completions）</h3>
+          <div className="form-grid">
+            <input
+              placeholder="输入 query"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            <button type="button" disabled={sending} onClick={onSend}>
+              {sending ? "发送中..." : "发送"}
+            </button>
+          </div>
+          <p className="hint">当前 session_id: {activeSessionId ?? "null(新会话)"}</p>
+        </div>
+      </div>
+
+      <div className="detail-box">
+        <h3>对话记录（GET /api/ai/chat/history）</h3>
+        {messages.length === 0 ? <p className="empty">暂无消息</p> : null}
+        <div className="table-actions">
+          {messages.map((msg, idx) => (
+            <div key={`${msg.chat_time}_${idx}`} className="row-action">
+              <strong>{msg.role}</strong>
+              <span>{msg.chat_time}</span>
+              <span>{msg.content}</span>
+            </div>
+          ))}
+          {streamingContent ? (
+            <div className="row-action">
+              <strong>assistant</strong>
+              <span>streaming</span>
+              <span>{streamingContent}</span>
+            </div>
+          ) : null}
+        </div>
+      </div>
     </section>
   );
 }

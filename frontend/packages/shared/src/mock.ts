@@ -1,6 +1,12 @@
 import type {
   AcknowledgeReq,
   ApiResponse,
+  ChatCompletionChunk,
+  ChatCompletionReq,
+  ChatHistoryRes,
+  ChatSessionItem,
+  ChatSessionListData,
+  ChatSessionsQuery,
   ConfirmReq,
   FeedbackReq,
   InventoryAdjustReq,
@@ -267,6 +273,35 @@ const mockTransfers: TransferOrder[] = [
   },
 ];
 
+const mockChatSessions: ChatSessionItem[] = [
+  {
+    session_id: "sess_998",
+    title: "询问矿泉水销量",
+    session_time: "2026-03-24T10:00:00Z",
+  },
+];
+
+const mockChatHistories: Record<string, ChatHistoryRes> = {
+  sess_998: {
+    session_id: "sess_998",
+    store_id: 1,
+    messages: [
+      {
+        role: "user",
+        content: "昨天矿泉水销量如何？",
+        chat_time: "2026-03-24T10:00:00Z",
+      },
+      {
+        role: "assistant",
+        content: "昨天矿泉水销量为 150 瓶。",
+        chat_time: "2026-03-24T10:00:15Z",
+      },
+    ],
+  },
+};
+
+let nextChatSessionId = 999;
+
 
 function toPaged<T>(data: T[], page = 1, limit = 10): PagedData<T> {
   return {
@@ -315,6 +350,24 @@ function sleep(ms: number): Promise<void> {
 
 function ok<T>(data: T, message = "ok"): ApiResponse<T> {
   return { code: 0, message, data };
+}
+
+export function mockWebSocketTraffic(storeId: number, callback: (count: number) => void) {
+  let currentCount = 10;
+
+  const timer = setInterval(() => {
+    const delta = Math.floor(Math.random() * 6) - 2;
+    currentCount = Math.max(0, currentCount + delta);
+    const mockMessage = {
+      event: "TRAFFIC_TICK",
+      store_id: storeId,
+      data: { current_people_count: currentCount },
+    };
+
+    callback(mockMessage.data.current_people_count);
+  }, 1000);
+
+  return () => clearInterval(timer);
 }
 
 export class AegisMockApi {
@@ -956,6 +1009,99 @@ export class AegisMockApi {
     }
     mockTransfers[idx] = { ...mockTransfers[idx], status: "cancelled" };
     return ok(null, "调拨单已作废");
+  }
+
+  public async getChatSessions(
+    query: ChatSessionsQuery
+  ): Promise<ApiResponse<ChatSessionListData>> {
+    await sleep(100);
+    const limit = query.limit ?? 20;
+    const filtered = mockChatSessions.filter((item) => {
+      const history = mockChatHistories[item.session_id];
+      return history?.store_id === query.store_id;
+    });
+    return ok(toPaged(filtered, 1, limit), "success");
+  }
+
+  public async getChatHistory(session_id: string): Promise<ApiResponse<ChatHistoryRes | null>> {
+    await sleep(100);
+    const history = mockChatHistories[session_id];
+    if (!history) {
+      return { code: 1001, message: "会话不存在", data: null };
+    }
+    return ok(history, "success");
+  }
+
+  public streamChatCompletions(
+    payload: ChatCompletionReq,
+    onChunk: (chunk: ChatCompletionChunk) => void
+  ): () => void {
+    const session_id = payload.session_id ?? `sess_${nextChatSessionId++}`;
+    const now = new Date().toISOString();
+    const reply = `已收到问题：${payload.query}。建议结合客流高峰时段提前补货矿泉水与高频快消品。`;
+    const chunks = [reply.slice(0, 12), reply.slice(12, 24), reply.slice(24)];
+
+    if (!mockChatHistories[session_id]) {
+      mockChatHistories[session_id] = {
+        session_id,
+        store_id: payload.store_id,
+        messages: [],
+      };
+    }
+
+    mockChatHistories[session_id].messages.push({
+      role: "user",
+      content: payload.query,
+      chat_time: now,
+    });
+
+    const title = payload.query.slice(0, 20) || "新会话";
+    const existingIdx = mockChatSessions.findIndex((x) => x.session_id === session_id);
+    const sessionItem: ChatSessionItem = {
+      session_id,
+      title,
+      session_time: now,
+    };
+    if (existingIdx >= 0) {
+      mockChatSessions.splice(existingIdx, 1);
+    }
+    mockChatSessions.unshift(sessionItem);
+
+    let idx = 0;
+    let canceled = false;
+    const timer = setInterval(() => {
+      if (canceled) {
+        clearInterval(timer);
+        return;
+      }
+
+      if (idx < chunks.length) {
+        onChunk({
+          session_id,
+          content: chunks[idx],
+          is_finish: false,
+        });
+        idx += 1;
+        return;
+      }
+
+      onChunk({
+        session_id,
+        content: "",
+        is_finish: true,
+      });
+      mockChatHistories[session_id].messages.push({
+        role: "assistant",
+        content: reply,
+        chat_time: new Date().toISOString(),
+      });
+      clearInterval(timer);
+    }, 220);
+
+    return () => {
+      canceled = true;
+      clearInterval(timer);
+    };
   }
 
 }

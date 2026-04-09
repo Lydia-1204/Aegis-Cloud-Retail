@@ -3,7 +3,8 @@ import { useAuth } from "../auth/AuthContext";
 
 const navItems: Array<{ to: string; label: string }> = [
   { to: "/", label: "销售流水" },
-  { to: "/sales", label: "销售流水" },
+  { to: "/chat", label: "AI 对话" },
+  { to: "/traffic", label: "客流感知" },
   { to: "/inventory", label: "库存盘点" },
   { to: "/transfers", label: "调拨确认" },
 ];
