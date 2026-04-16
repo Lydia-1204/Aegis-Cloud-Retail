@@ -4,12 +4,11 @@ import { useAuth } from "../auth/AuthContext";
 import { acknowledgeTransfer, feedbackTransfer, fetchTransfers } from "../services/api";
 import {
   DateField,
+  ModalShell,
   PaginationBar,
   TRANSFER_FIELD_LABELS,
   TRANSFER_STATUS_LABELS,
   parseError,
-  renderTable,
-  toNumberOrUndefined,
 } from "./storeHelpers";
 
 export function TransfersPage() {
@@ -29,8 +28,8 @@ export function TransfersPage() {
   ];
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [ackForm, setAckForm] = useState({ order_id: "", detail_id: "", actual_qty: "" });
-  const [feedbackForm, setFeedbackForm] = useState({ order_id: "", feedback: "" });
+  const [feedbackOrderId, setFeedbackOrderId] = useState<number | null>(null);
+  const [feedbackText, setFeedbackText] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -51,27 +50,11 @@ export function TransfersPage() {
     void loadTransfers();
   }, [page, limit, status, startDate, endDate, me]);
 
-  async function onAcknowledge() {
-    const order_id = Number(ackForm.order_id);
-    if (!order_id) {
-      setError("请输入 order_id");
-      return;
-    }
+  async function onAcknowledge(order_id: number) {
     setMessage("");
     setError("");
     try {
-      await acknowledgeTransfer(order_id, {
-        details:
-          toNumberOrUndefined(ackForm.detail_id) !== undefined &&
-          toNumberOrUndefined(ackForm.actual_qty) !== undefined
-            ? [
-                {
-                  detail_id: Number(ackForm.detail_id),
-                  actual_qty: Number(ackForm.actual_qty),
-                },
-              ]
-            : undefined,
-      });
+      await acknowledgeTransfer(order_id, { details: undefined });
       setMessage("调拨单确认成功");
       await loadTransfers();
     } catch (err) {
@@ -79,17 +62,19 @@ export function TransfersPage() {
     }
   }
 
-  async function onFeedback() {
-    const order_id = Number(feedbackForm.order_id);
-    if (!order_id) {
-      setError("请输入 order_id");
+  async function onSubmitFeedback() {
+    if (!feedbackOrderId) return;
+    if (!feedbackText.trim()) {
+      setError("请输入异议内容");
       return;
     }
     setMessage("");
     setError("");
     try {
-      await feedbackTransfer(order_id, { feedback: feedbackForm.feedback.trim() });
+      await feedbackTransfer(feedbackOrderId, { feedback: feedbackText.trim() });
       setMessage("异议提交成功");
+      setFeedbackOrderId(null);
+      setFeedbackText("");
       await loadTransfers();
     } catch (err) {
       setError(parseError(err));
@@ -102,20 +87,23 @@ export function TransfersPage() {
       {message ? <p className="success-text">{message}</p> : null}
       {error ? <p className="error-text">{error}</p> : null}
       <div className="query-bar">
-        <select
-          value={status}
-          onChange={(e) => {
-            setPage(1);
-            setStatus(e.target.value as "" | TransferOrder["status"]);
-          }}
-        >
-          <option value="">全部状态</option>
-          {transferStatusOptions.map((item) => (
-            <option key={item} value={item}>
-              {TRANSFER_STATUS_LABELS[item]}
-            </option>
-          ))}
-        </select>
+        <label className="date-field">
+          <span>状态</span>
+          <select
+            value={status}
+            onChange={(e) => {
+              setPage(1);
+              setStatus(e.target.value as "" | TransferOrder["status"]);
+            }}
+          >
+            <option value="">全部状态</option>
+            {transferStatusOptions.map((item) => (
+              <option key={item} value={item}>
+                {TRANSFER_STATUS_LABELS[item]}
+              </option>
+            ))}
+          </select>
+        </label>
         <DateField
           label="开始日期"
           value={startDate}
@@ -133,57 +121,56 @@ export function TransfersPage() {
           }}
         />
       </div>
-      <div className="ops-grid">
-        <div className="op-card">
-          <h3>门店确认（PATCH /transfers/:order_id/acknowledge）</h3>
-          <div className="form-grid">
-            <input
-              placeholder="调拨单号"
-              value={ackForm.order_id}
-              onChange={(e) => setAckForm((s) => ({ ...s, order_id: e.target.value }))}
-            />
-            <input
-              placeholder="明细单号（可选）"
-              value={ackForm.detail_id}
-              onChange={(e) => setAckForm((s) => ({ ...s, detail_id: e.target.value }))}
-            />
-            <input
-              placeholder="实际数量（可选）"
-              value={ackForm.actual_qty}
-              onChange={(e) => setAckForm((s) => ({ ...s, actual_qty: e.target.value }))}
-            />
-            <button type="button" onClick={onAcknowledge}>
-              确认接单
-            </button>
-          </div>
-        </div>
-        <div className="op-card">
-          <h3>门店异议（PATCH /transfers/:order_id/feedback）</h3>
-          <div className="form-grid">
-            <input
-              placeholder="调拨单号"
-              value={feedbackForm.order_id}
-              onChange={(e) => setFeedbackForm((s) => ({ ...s, order_id: e.target.value }))}
-            />
-            <input
-              placeholder="异议内容"
-              value={feedbackForm.feedback}
-              onChange={(e) => setFeedbackForm((s) => ({ ...s, feedback: e.target.value }))}
-            />
-            <button type="button" onClick={onFeedback}>
-              提交异议
-            </button>
-          </div>
-        </div>
+      <div className="table-container transfers-table-container">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>{TRANSFER_FIELD_LABELS.order_id}</th>
+              <th>{TRANSFER_FIELD_LABELS.status}</th>
+              <th>{TRANSFER_FIELD_LABELS.feedback}</th>
+              <th>{TRANSFER_FIELD_LABELS.detail_count}</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="inventory-empty-cell">
+                  暂无数据
+                </td>
+              </tr>
+            ) : (
+              rows.map((row) => (
+                <tr key={row.order_id}>
+                  <td>{row.order_id}</td>
+                  <td>{TRANSFER_STATUS_LABELS[row.status]}</td>
+                  <td>{row.feedback ?? "-"}</td>
+                  <td>{row.details.length}</td>
+                  <td>
+                    <button
+                      type="button"
+                      className="inventory-action-btn"
+                      onClick={() => onAcknowledge(row.order_id)}
+                    >
+                      确认接单
+                    </button>
+                    <button
+                      type="button"
+                      className="inventory-action-btn"
+                      onClick={() => {
+                        setFeedbackOrderId(row.order_id);
+                        setFeedbackText("");
+                      }}
+                    >
+                      发起异议
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
-      {renderTable(
-        rows.map((x) => ({
-          [TRANSFER_FIELD_LABELS.order_id]: x.order_id,
-          [TRANSFER_FIELD_LABELS.status]: TRANSFER_STATUS_LABELS[x.status],
-          [TRANSFER_FIELD_LABELS.feedback]: x.feedback ?? "-",
-          [TRANSFER_FIELD_LABELS.detail_count]: x.details.length,
-        }))
-      )}
       <PaginationBar
         page={page}
         total={total}
@@ -191,6 +178,23 @@ export function TransfersPage() {
         onPrev={() => setPage((p) => p - 1)}
         onNext={() => setPage((p) => p + 1)}
       />
+      {feedbackOrderId ? (
+        <ModalShell title={`异议 - 调拨单号 ${feedbackOrderId}`} onClose={() => setFeedbackOrderId(null)}>
+          <div className="form-grid">
+            <textarea
+              placeholder="请输入异议内容"
+              value={feedbackText}
+              onChange={(e) => setFeedbackText(e.target.value)}
+              style={{ gridColumn: "1 / -1", minHeight: "100px" }}
+            />
+          </div>
+          <div className="sales-form-actions">
+            <button type="button" onClick={onSubmitFeedback}>
+              提交异议
+            </button>
+          </div>
+        </ModalShell>
+      ) : null}
     </section>
   );
 }

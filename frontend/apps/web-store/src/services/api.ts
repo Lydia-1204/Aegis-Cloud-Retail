@@ -23,6 +23,7 @@ import {
   type SalesDailyDetail,
   type SalesDailyUpdateReq,
   type SalesQuery,
+  type Store,
   type SKU,
   type SKUCategory,
   type SkusQuery,
@@ -301,6 +302,14 @@ export async function fetchSkus(query: SkusQuery): Promise<PagedData<SKU>> {
     return unwrapMockEnvelope(res);
   }
   return authedHttp().getPaged<SKU>("foundationData", "/skus", query);
+}
+
+export async function fetchStoreById(store_id: number): Promise<Store> {
+  if (useMock) {
+    const res = await mockApi.getStoreById(store_id);
+    return unwrapMockEnvelope(res);
+  }
+  return authedHttp().getOne<Store>("foundationData", `/stores/${store_id}`);
 }
 
 export async function fetchSkuCategories(): Promise<SKUCategory[]> {

@@ -6,6 +6,7 @@ import {
   ChatPage,
   InventoryPage,
   SalesPage,
+  StoreInfoPage,
   TrafficPage,
   TransfersPage,
 } from "./pages/StorePages";
@@ -21,6 +22,7 @@ export function App() {
             <Route path="/sales" element={<Navigate to="/" replace />} />
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/traffic" element={<TrafficPage />} />
+            <Route path="/store" element={<StoreInfoPage />} />
             <Route path="/inventory" element={<InventoryPage />} />
             <Route path="/transfers" element={<TransfersPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />

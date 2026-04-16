@@ -2,6 +2,7 @@ import { NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 
 const navItems: Array<{ to: string; label: string }> = [
+  { to: "/store", label: "门店信息" },
   { to: "/", label: "销售流水" },
   { to: "/chat", label: "AI 对话" },
   { to: "/traffic", label: "客流感知" },

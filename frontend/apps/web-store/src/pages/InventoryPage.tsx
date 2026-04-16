@@ -1,13 +1,8 @@
 import { useEffect, useState } from "react";
-import type { InventoryAdjustReq, InventoryItem, SKU, SKUCategory } from "@aegis/shared";
+import type { InventoryAdjustReq, InventoryItem, SKUCategory } from "@aegis/shared";
 import { useAuth } from "../auth/AuthContext";
-import { adjustInventory, fetchInventory, fetchSkuCategories, fetchSkus } from "../services/api";
-import {
-  INVENTORY_FIELD_LABELS,
-  PaginationBar,
-  parseError,
-  renderTable,
-} from "./storeHelpers";
+import { adjustInventory, fetchInventory, fetchSkuCategories } from "../services/api";
+import { INVENTORY_FIELD_LABELS, ModalShell, PaginationBar, parseError } from "./storeHelpers";
 
 export function InventoryPage() {
   const { me } = useAuth();
@@ -18,13 +13,12 @@ export function InventoryPage() {
   const [keyword, setKeyword] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [lowStock, setLowStock] = useState(false);
-  const [skuOptions, setSkuOptions] = useState<SKU[]>([]);
   const [categories, setCategories] = useState<SKUCategory[]>([]);
+  const [activeItem, setActiveItem] = useState<InventoryItem | null>(null);
   const [adjustForm, setAdjustForm] = useState({
-    sku_id: "",
     actual_quantity: "",
     inventory_diagonsis_result_type: "Normal" as InventoryAdjustReq["inventory_diagonsis_result_type"],
-    inventory_root_cause: '{"reason":""}',
+    inventory_root_cause: "",
     remark: "",
   });
   const [message, setMessage] = useState("");
@@ -51,28 +45,45 @@ export function InventoryPage() {
     if (!me) {
       return;
     }
-    fetchSkus({ page: 1, limit: 200 })
-      .then((res) => setSkuOptions(res.data))
-      .catch(() => setSkuOptions([]));
     fetchSkuCategories()
       .then((res) => setCategories(res))
       .catch(() => setCategories([]));
   }, [me]);
 
+  function onOpenAdjust(item: InventoryItem) {
+    if (item.is_locked) {
+      return;
+    }
+    setActiveItem(item);
+    setAdjustForm({
+      actual_quantity: String(item.actual_quantity),
+      inventory_diagonsis_result_type: "Normal" as InventoryAdjustReq["inventory_diagonsis_result_type"],
+      inventory_root_cause: "",
+      remark: "",
+    });
+    setMessage("");
+    setError("");
+  }
+
   async function onAdjustInventory() {
+    if (!activeItem) {
+      return;
+    }
+
     setMessage("");
     setError("");
     try {
-      const rootCause = JSON.parse(adjustForm.inventory_root_cause) as object;
+      const rootCause = { reason: adjustForm.inventory_root_cause };
       await adjustInventory({
         store_id: me?.store_id ?? 1,
-        sku_id: Number(adjustForm.sku_id),
+        sku_id: activeItem.sku_id,
         actual_quantity: Number(adjustForm.actual_quantity),
         inventory_diagonsis_result_type: adjustForm.inventory_diagonsis_result_type,
         inventory_root_cause: rootCause,
         remark: adjustForm.remark || undefined,
       });
-      setMessage("库存修正成功");
+      setMessage(`SKU ${activeItem.sku_code} 库存修正成功`);
+      setActiveItem(null);
       await loadInventory();
     } catch (err) {
       setError(parseError(err));
@@ -119,21 +130,61 @@ export function InventoryPage() {
           仅低库存
         </label>
       </div>
-      <div className="ops-grid">
-        <div className="op-card">
-          <h3>库存修正（POST /inventory/adjust）</h3>
-          <div className="form-grid">
-            <select
-              value={adjustForm.sku_id}
-              onChange={(e) => setAdjustForm((s) => ({ ...s, sku_id: e.target.value }))}
-            >
-              <option value="">请选择 SKU</option>
-              {skuOptions.map((sku) => (
-                <option key={sku.sku_id} value={String(sku.sku_id)}>
-                  {sku.sku_code} - {sku.sku_name}
-                </option>
-              ))}
-            </select>
+
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>{INVENTORY_FIELD_LABELS.sku_code}</th>
+              <th>{INVENTORY_FIELD_LABELS.sku_name}</th>
+              <th>{INVENTORY_FIELD_LABELS.actual_quantity}</th>
+              <th>{INVENTORY_FIELD_LABELS.is_locked}</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="empty inventory-empty-cell">
+                  暂无数据
+                </td>
+              </tr>
+            ) : (
+              rows.map((item) => (
+                <tr key={item.inventory_id}>
+                  <td>{item.sku_code}</td>
+                  <td>{item.sku_name}</td>
+                  <td>{item.actual_quantity}</td>
+                  <td>{item.is_locked ? "是" : "否"}</td>
+                  <td>
+                    <button
+                      type="button"
+                      className="inventory-action-btn"
+                      disabled={item.is_locked}
+                      onClick={() => onOpenAdjust(item)}
+                    >
+                      修正库存
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <PaginationBar
+        page={page}
+        total={total}
+        limit={limit}
+        onPrev={() => setPage((p) => p - 1)}
+        onNext={() => setPage((p) => p + 1)}
+      />
+
+      {activeItem ? (
+        <ModalShell title={`库存修正 - ${activeItem.sku_code}`} onClose={() => setActiveItem(null)}>
+          <p className="hint">商品：{activeItem.sku_name}</p>
+          <div className="form-grid inventory-adjust-grid">
             <input
               placeholder="当前库存数量"
               value={adjustForm.actual_quantity}
@@ -149,43 +200,28 @@ export function InventoryPage() {
                 }))
               }
             >
-              <option value="Normal">Normal</option>
-              <option value="Shortage">Shortage</option>
-              <option value="Unsale">Unsale</option>
+              <option value="Normal">正常</option>
+              <option value="Shortage">缺货</option>
+              <option value="Unsale">滞销</option>
             </select>
             <input
-              placeholder='盘点原因 JSON'
+              placeholder="盘点原因"
               value={adjustForm.inventory_root_cause}
-              onChange={(e) =>
-                setAdjustForm((s) => ({ ...s, inventory_root_cause: e.target.value }))
-              }
+              onChange={(e) => setAdjustForm((s) => ({ ...s, inventory_root_cause: e.target.value }))}
             />
             <input
               placeholder="备注（超 30% 必填）"
               value={adjustForm.remark}
               onChange={(e) => setAdjustForm((s) => ({ ...s, remark: e.target.value }))}
             />
+          </div>
+          <div className="sales-form-actions">
             <button type="button" onClick={onAdjustInventory}>
               提交修正
             </button>
           </div>
-        </div>
-      </div>
-      {renderTable(
-        rows.map((x) => ({
-          [INVENTORY_FIELD_LABELS.sku_code]: x.sku_code,
-          [INVENTORY_FIELD_LABELS.sku_name]: x.sku_name,
-          [INVENTORY_FIELD_LABELS.actual_quantity]: x.actual_quantity,
-          [INVENTORY_FIELD_LABELS.is_locked]: x.is_locked ? "是" : "否",
-        }))
-      )}
-      <PaginationBar
-        page={page}
-        total={total}
-        limit={limit}
-        onPrev={() => setPage((p) => p - 1)}
-        onNext={() => setPage((p) => p + 1)}
-      />
+        </ModalShell>
+      ) : null}
     </section>
   );
 }
