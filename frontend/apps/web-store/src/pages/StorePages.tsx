@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { useAuth } from "../auth/AuthContext";
 import type {
   ChatMessage,
@@ -31,6 +32,45 @@ import {
 
 type Row = Record<string, string | number | null>;
 
+const SALES_FIELD_LABELS = {
+  sales_id: "销售单号",
+  sales_date: "销售日期",
+  total_orders: "总单数",
+  total_income: "总收入",
+  total_profit: "总利润",
+};
+
+const SALES_DETAIL_FIELD_LABELS = {
+  sku_id: "SKU",
+  sku_name: "商品名称",
+  sku_amount: "销售数量",
+  sku_income: "销售收入",
+  sku_profit: "销售利润",
+};
+
+const INVENTORY_FIELD_LABELS = {
+  sku_code: "SKU 编码",
+  sku_name: "商品名称",
+  actual_quantity: "当前库存",
+  is_locked: "锁定状态",
+};
+
+const TRANSFER_FIELD_LABELS = {
+  order_id: "调拨单号",
+  status: "状态",
+  feedback: "门店异议",
+  detail_count: "明细数量",
+};
+
+const TRANSFER_STATUS_LABELS: Record<TransferOrder["status"], string> = {
+  ai_generated: "AI 生成",
+  pending_approval: "待审核",
+  issued_pending_confirmation: "已下发待确认",
+  in_negotiation: "协商中",
+  confirmed_executed: "已确认执行",
+  cancelled: "已取消",
+};
+
 function renderTable(rows: Row[]) {
   if (rows.length === 0) {
     return <p className="empty">暂无数据</p>;
@@ -58,6 +98,134 @@ function renderTable(rows: Row[]) {
         </tbody>
       </table>
     </div>
+  );
+}
+
+function renderSalesDetail(detail: SalesDailyDetail) {
+  const summaryRows: Row[] = [
+    {
+      [SALES_FIELD_LABELS.sales_id]: detail.sales_id,
+      [SALES_FIELD_LABELS.sales_date]: detail.sales_date,
+      [SALES_FIELD_LABELS.total_orders]: detail.total_orders,
+      [SALES_FIELD_LABELS.total_income]: detail.total_income,
+      [SALES_FIELD_LABELS.total_profit]: detail.total_profit,
+    },
+  ];
+
+  const detailRows: Row[] = detail.details.map((item) => ({
+    [SALES_DETAIL_FIELD_LABELS.sku_id]: item.sku_id,
+    [SALES_DETAIL_FIELD_LABELS.sku_name]: item.sku_name,
+    [SALES_DETAIL_FIELD_LABELS.sku_amount]: item.sku_amount,
+    [SALES_DETAIL_FIELD_LABELS.sku_income]: item.sku_income,
+    [SALES_DETAIL_FIELD_LABELS.sku_profit]: item.sku_profit,
+  }));
+
+  return (
+    <div className="detail-box">
+      <strong>销售详情</strong>
+      {renderTable(summaryRows)}
+      <strong>销售明细</strong>
+      {renderTable(detailRows)}
+    </div>
+  );
+}
+
+function renderSalesTable(
+  rows: SalesDaily[],
+  onViewDetail: (salesId: number) => void,
+  onEdit: (salesId: number) => void
+) {
+  if (rows.length === 0) {
+    return <p className="empty">暂无数据</p>;
+  }
+
+  return (
+    <div className="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>{SALES_FIELD_LABELS.sales_id}</th>
+            <th>{SALES_FIELD_LABELS.sales_date}</th>
+            <th>{SALES_FIELD_LABELS.total_orders}</th>
+            <th>{SALES_FIELD_LABELS.total_income}</th>
+            <th>{SALES_FIELD_LABELS.total_profit}</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.sales_id}>
+              <td>{row.sales_id}</td>
+              <td>{row.sales_date}</td>
+              <td>{row.total_orders}</td>
+              <td>{row.total_income}</td>
+              <td>{row.total_profit}</td>
+              <td>
+                <button type="button" onClick={() => void onViewDetail(row.sales_id)}>
+                  查看详情
+                </button>
+                <button type="button" onClick={() => void onEdit(row.sales_id)}>
+                  修改
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ModalShell({
+  title,
+  onClose,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="modal-overlay" role="presentation" onClick={onClose}>
+      <div className="modal-dialog" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <strong>{title}</strong>
+          <button type="button" className="modal-close" onClick={onClose}>
+            关闭
+          </button>
+        </div>
+        <div className="modal-body">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function DateField({
+  label,
+  value,
+  onChange,
+  hint,
+  disabled,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  hint?: string;
+  disabled?: boolean;
+}) {
+  return (
+    <label className="date-field">
+      <span>{label}</span>
+      <div className="date-input-row">
+        <input
+          type="date"
+          value={value}
+          disabled={disabled}
+          onChange={(e) => onChange(e.target.value)}
+        />
+        {hint ? <small className="date-hint">{hint}</small> : null}
+      </div>
+    </label>
   );
 }
 
@@ -113,7 +281,7 @@ export function SalesPage() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [detail, setDetail] = useState<SalesDailyDetail | null>(null);
-  const [detailId, setDetailId] = useState("");
+  const [activeModal, setActiveModal] = useState<"detail" | "edit" | null>(null);
   const [skuOptions, setSkuOptions] = useState<SKU[]>([]);
   const [createForm, setCreateForm] = useState({
     sales_date: "",
@@ -167,18 +335,40 @@ export function SalesPage() {
       .catch(() => setSkuOptions([]));
   }, [me]);
 
-  async function onFetchDetail() {
-    const sales_id = Number(detailId);
-    if (!sales_id) {
-      setError("请输入 sales_id");
-      return;
-    }
+  async function onFetchDetail(sales_id: number) {
     setMessage("");
     setError("");
     try {
       const res = await fetchSalesDailyDetail(sales_id);
       setDetail(res);
-      setMessage("销售详情加载成功");
+      setActiveModal("detail");
+      setMessage(`已加载销售单 ${sales_id} 详情`);
+    } catch (err) {
+      setError(parseError(err));
+    }
+  }
+
+  async function onPrepareUpdate(sales_id: number) {
+    setMessage("");
+    setError("");
+    try {
+      const res = await fetchSalesDailyDetail(sales_id);
+      const firstDetail = res.details[0];
+      setDetail(res);
+      setUpdateForm({
+        sales_id: String(res.sales_id),
+        sales_date: res.sales_date,
+        total_orders: String(res.total_orders),
+        total_income: String(res.total_income),
+        total_profit: String(res.total_profit),
+        force_overwrite: true,
+        sku_id: firstDetail ? String(firstDetail.sku_id) : "",
+        sku_amount: firstDetail ? String(firstDetail.sku_amount) : "",
+        sku_income: firstDetail ? String(firstDetail.sku_income) : "",
+        sku_profit: firstDetail ? String(firstDetail.sku_profit) : "",
+      });
+      setActiveModal("edit");
+      setMessage(`已载入销售单 ${sales_id} 的修改内容`);
     } catch (err) {
       setError(parseError(err));
     }
@@ -252,65 +442,53 @@ export function SalesPage() {
       {message ? <p className="success-text">{message}</p> : null}
       {error ? <p className="error-text">{error}</p> : null}
       <div className="query-bar">
-        <input
-          placeholder="sales_date: YYYY-MM-DD"
+        <DateField
+          label="销售日期"
           value={salesDate}
-          onChange={(e) => {
+          onChange={(value) => {
             setPage(1);
-            setSalesDate(e.target.value);
+            setSalesDate(value);
           }}
         />
-        <input
-          placeholder="start_date"
+        <DateField
+          label="开始日期"
           value={startDate}
-          onChange={(e) => {
+          onChange={(value) => {
             setPage(1);
-            setStartDate(e.target.value);
+            setStartDate(value);
           }}
         />
-        <input
-          placeholder="end_date"
+        <DateField
+          label="结束日期"
           value={endDate}
-          onChange={(e) => {
+          onChange={(value) => {
             setPage(1);
-            setEndDate(e.target.value);
+            setEndDate(value);
           }}
         />
       </div>
       <div className="ops-grid">
-        <div className="op-card">
-          <h3>销售详情（GET /sales/daily/:sales_id）</h3>
-          <div className="form-grid">
-            <input
-              placeholder="sales_id"
-              value={detailId}
-              onChange={(e) => setDetailId(e.target.value)}
-            />
-            <button type="button" onClick={onFetchDetail}>
-              查询详情
-            </button>
-          </div>
-        </div>
-        <div className="op-card">
-          <h3>提交流水（POST /sales/daily）</h3>
-          <div className="form-grid">
-            <input
-              placeholder="sales_date"
+        <div className="op-card op-card-full">
+          <h3 className="sales-create-title">提交流水</h3>
+          <div className="form-grid sales-form-grid">
+            <DateField
+              label="销售日期"
               value={createForm.sales_date}
-              onChange={(e) => setCreateForm((s) => ({ ...s, sales_date: e.target.value }))}
+              onChange={(value) => setCreateForm((s) => ({ ...s, sales_date: value }))}
+              hint="销售日期"
             />
             <input
-              placeholder="total_orders"
+              placeholder="总单数"
               value={createForm.total_orders}
               onChange={(e) => setCreateForm((s) => ({ ...s, total_orders: e.target.value }))}
             />
             <input
-              placeholder="total_income"
+              placeholder="总收入"
               value={createForm.total_income}
               onChange={(e) => setCreateForm((s) => ({ ...s, total_income: e.target.value }))}
             />
             <input
-              placeholder="total_profit"
+              placeholder="总利润"
               value={createForm.total_profit}
               onChange={(e) => setCreateForm((s) => ({ ...s, total_profit: e.target.value }))}
             />
@@ -318,7 +496,7 @@ export function SalesPage() {
               value={createForm.sku_id}
               onChange={(e) => setCreateForm((s) => ({ ...s, sku_id: e.target.value }))}
             >
-              <option value="">detail.sku_id</option>
+              <option value="">请选择 SKU</option>
               {skuOptions.map((sku) => (
                 <option key={sku.sku_id} value={String(sku.sku_id)}>
                   {sku.sku_code} - {sku.sku_name}
@@ -326,20 +504,22 @@ export function SalesPage() {
               ))}
             </select>
             <input
-              placeholder="detail.sku_amount"
+              placeholder="销售数量"
               value={createForm.sku_amount}
               onChange={(e) => setCreateForm((s) => ({ ...s, sku_amount: e.target.value }))}
             />
             <input
-              placeholder="detail.sku_income"
+              placeholder="销售收入"
               value={createForm.sku_income}
               onChange={(e) => setCreateForm((s) => ({ ...s, sku_income: e.target.value }))}
             />
             <input
-              placeholder="detail.sku_profit"
+              placeholder="销售利润"
               value={createForm.sku_profit}
               onChange={(e) => setCreateForm((s) => ({ ...s, sku_profit: e.target.value }))}
             />
+          </div>
+          <div className="sales-form-actions sales-create-actions">
             <label className="check-line">
               <input
                 type="checkbox"
@@ -348,88 +528,15 @@ export function SalesPage() {
                   setCreateForm((s) => ({ ...s, force_overwrite: e.target.checked }))
                 }
               />
-              force_overwrite
+              强制覆盖
             </label>
             <button type="button" onClick={onCreateSales}>
               提交
             </button>
           </div>
         </div>
-        <div className="op-card">
-          <h3>修改流水（PUT /sales/daily/:sales_id）</h3>
-          <div className="form-grid">
-            <input
-              placeholder="sales_id"
-              value={updateForm.sales_id}
-              onChange={(e) => setUpdateForm((s) => ({ ...s, sales_id: e.target.value }))}
-            />
-            <input
-              placeholder="sales_date"
-              value={updateForm.sales_date}
-              onChange={(e) => setUpdateForm((s) => ({ ...s, sales_date: e.target.value }))}
-            />
-            <input
-              placeholder="total_orders"
-              value={updateForm.total_orders}
-              onChange={(e) => setUpdateForm((s) => ({ ...s, total_orders: e.target.value }))}
-            />
-            <input
-              placeholder="total_income"
-              value={updateForm.total_income}
-              onChange={(e) => setUpdateForm((s) => ({ ...s, total_income: e.target.value }))}
-            />
-            <input
-              placeholder="total_profit"
-              value={updateForm.total_profit}
-              onChange={(e) => setUpdateForm((s) => ({ ...s, total_profit: e.target.value }))}
-            />
-            <select
-              value={updateForm.sku_id}
-              onChange={(e) => setUpdateForm((s) => ({ ...s, sku_id: e.target.value }))}
-            >
-              <option value="">detail.sku_id</option>
-              {skuOptions.map((sku) => (
-                <option key={sku.sku_id} value={String(sku.sku_id)}>
-                  {sku.sku_code} - {sku.sku_name}
-                </option>
-              ))}
-            </select>
-            <input
-              placeholder="detail.sku_amount"
-              value={updateForm.sku_amount}
-              onChange={(e) => setUpdateForm((s) => ({ ...s, sku_amount: e.target.value }))}
-            />
-            <input
-              placeholder="detail.sku_income"
-              value={updateForm.sku_income}
-              onChange={(e) => setUpdateForm((s) => ({ ...s, sku_income: e.target.value }))}
-            />
-            <input
-              placeholder="detail.sku_profit"
-              value={updateForm.sku_profit}
-              onChange={(e) => setUpdateForm((s) => ({ ...s, sku_profit: e.target.value }))}
-            />
-            <button type="button" onClick={onUpdateSales}>
-              更新
-            </button>
-          </div>
-        </div>
       </div>
-      {detail ? (
-        <div className="detail-box">
-          <strong>当前销售详情</strong>
-          <pre>{JSON.stringify(detail, null, 2)}</pre>
-        </div>
-      ) : null}
-      {renderTable(
-        rows.map((x) => ({
-          sales_id: x.sales_id,
-          sales_date: x.sales_date,
-          total_orders: x.total_orders,
-          total_income: x.total_income,
-          total_profit: x.total_profit,
-        }))
-      )}
+      {renderSalesTable(rows, onFetchDetail, onPrepareUpdate)}
       <PaginationBar
         page={page}
         total={total}
@@ -437,6 +544,76 @@ export function SalesPage() {
         onPrev={() => setPage((p) => p - 1)}
         onNext={() => setPage((p) => p + 1)}
       />
+      {activeModal === "detail" && detail ? (
+        <ModalShell title="销售详情" onClose={() => setActiveModal(null)}>
+          {renderSalesDetail(detail)}
+        </ModalShell>
+      ) : null}
+      {activeModal === "edit" ? (
+        <ModalShell title="修改流水" onClose={() => setActiveModal(null)}>
+          <p className="hint">销售单号和销售日期已自动填充，不可修改。</p>
+          <div className="form-grid sales-edit-grid">
+            <DateField
+              label="销售日期"
+              value={updateForm.sales_date}
+              onChange={(value) => setUpdateForm((s) => ({ ...s, sales_date: value }))}
+              disabled
+            />
+            <input
+              placeholder="销售单号（自动填充，不可修改）"
+              value={updateForm.sales_id}
+              readOnly
+              onChange={(e) => setUpdateForm((s) => ({ ...s, sales_id: e.target.value }))}
+            />
+            <input
+              placeholder="总单数"
+              value={updateForm.total_orders}
+              onChange={(e) => setUpdateForm((s) => ({ ...s, total_orders: e.target.value }))}
+            />
+            <input
+              placeholder="总收入"
+              value={updateForm.total_income}
+              onChange={(e) => setUpdateForm((s) => ({ ...s, total_income: e.target.value }))}
+            />
+            <select
+              value={updateForm.sku_id}
+              onChange={(e) => setUpdateForm((s) => ({ ...s, sku_id: e.target.value }))}
+            >
+              <option value="">请选择 SKU</option>
+              {skuOptions.map((sku) => (
+                <option key={sku.sku_id} value={String(sku.sku_id)}>
+                  {sku.sku_code} - {sku.sku_name}
+                </option>
+              ))}
+            </select>
+            <input
+              placeholder="总利润"
+              value={updateForm.total_profit}
+              onChange={(e) => setUpdateForm((s) => ({ ...s, total_profit: e.target.value }))}
+            />
+            <input
+              placeholder="销售数量"
+              value={updateForm.sku_amount}
+              onChange={(e) => setUpdateForm((s) => ({ ...s, sku_amount: e.target.value }))}
+            />
+            <input
+              placeholder="销售收入"
+              value={updateForm.sku_income}
+              onChange={(e) => setUpdateForm((s) => ({ ...s, sku_income: e.target.value }))}
+            />
+            <input
+              placeholder="销售利润"
+              value={updateForm.sku_profit}
+              onChange={(e) => setUpdateForm((s) => ({ ...s, sku_profit: e.target.value }))}
+            />
+          </div>
+          <div className="sales-form-actions">
+            <button type="button" onClick={onUpdateSales}>
+              更新
+            </button>
+          </div>
+        </ModalShell>
+      ) : null}
     </section>
   );
 }
@@ -559,7 +736,7 @@ export function InventoryPage() {
               value={adjustForm.sku_id}
               onChange={(e) => setAdjustForm((s) => ({ ...s, sku_id: e.target.value }))}
             >
-              <option value="">sku_id</option>
+              <option value="">请选择 SKU</option>
               {skuOptions.map((sku) => (
                 <option key={sku.sku_id} value={String(sku.sku_id)}>
                   {sku.sku_code} - {sku.sku_name}
@@ -567,7 +744,7 @@ export function InventoryPage() {
               ))}
             </select>
             <input
-              placeholder="actual_quantity"
+              placeholder="当前库存数量"
               value={adjustForm.actual_quantity}
               onChange={(e) => setAdjustForm((s) => ({ ...s, actual_quantity: e.target.value }))}
             />
@@ -586,14 +763,14 @@ export function InventoryPage() {
               <option value="Unsale">Unsale</option>
             </select>
             <input
-              placeholder='inventory_root_cause(JSON)'
+              placeholder='盘点原因 JSON'
               value={adjustForm.inventory_root_cause}
               onChange={(e) =>
                 setAdjustForm((s) => ({ ...s, inventory_root_cause: e.target.value }))
               }
             />
             <input
-              placeholder="remark(>30%必填)"
+              placeholder="备注（超 30% 必填）"
               value={adjustForm.remark}
               onChange={(e) => setAdjustForm((s) => ({ ...s, remark: e.target.value }))}
             />
@@ -605,10 +782,10 @@ export function InventoryPage() {
       </div>
       {renderTable(
         rows.map((x) => ({
-          sku_code: x.sku_code,
-          sku_name: x.sku_name,
-          actual_quantity: x.actual_quantity,
-          is_locked: x.is_locked ? "yes" : "no",
+          [INVENTORY_FIELD_LABELS.sku_code]: x.sku_code,
+          [INVENTORY_FIELD_LABELS.sku_name]: x.sku_name,
+          [INVENTORY_FIELD_LABELS.actual_quantity]: x.actual_quantity,
+          [INVENTORY_FIELD_LABELS.is_locked]: x.is_locked ? "是" : "否",
         }))
       )}
       <PaginationBar
@@ -722,24 +899,24 @@ export function TransfersPage() {
           <option value="">全部状态</option>
           {transferStatusOptions.map((item) => (
             <option key={item} value={item}>
-              {item}
+              {TRANSFER_STATUS_LABELS[item]}
             </option>
           ))}
         </select>
-        <input
-          placeholder="start_date"
+        <DateField
+          label="开始日期"
           value={startDate}
-          onChange={(e) => {
+          onChange={(value) => {
             setPage(1);
-            setStartDate(e.target.value);
+            setStartDate(value);
           }}
         />
-        <input
-          placeholder="end_date"
+        <DateField
+          label="结束日期"
           value={endDate}
-          onChange={(e) => {
+          onChange={(value) => {
             setPage(1);
-            setEndDate(e.target.value);
+            setEndDate(value);
           }}
         />
       </div>
@@ -748,17 +925,17 @@ export function TransfersPage() {
           <h3>门店确认（PATCH /transfers/:order_id/acknowledge）</h3>
           <div className="form-grid">
             <input
-              placeholder="order_id"
+              placeholder="调拨单号"
               value={ackForm.order_id}
               onChange={(e) => setAckForm((s) => ({ ...s, order_id: e.target.value }))}
             />
             <input
-              placeholder="detail_id(可选)"
+              placeholder="明细单号（可选）"
               value={ackForm.detail_id}
               onChange={(e) => setAckForm((s) => ({ ...s, detail_id: e.target.value }))}
             />
             <input
-              placeholder="actual_qty(可选)"
+              placeholder="实际数量（可选）"
               value={ackForm.actual_qty}
               onChange={(e) => setAckForm((s) => ({ ...s, actual_qty: e.target.value }))}
             />
@@ -771,12 +948,12 @@ export function TransfersPage() {
           <h3>门店异议（PATCH /transfers/:order_id/feedback）</h3>
           <div className="form-grid">
             <input
-              placeholder="order_id"
+              placeholder="调拨单号"
               value={feedbackForm.order_id}
               onChange={(e) => setFeedbackForm((s) => ({ ...s, order_id: e.target.value }))}
             />
             <input
-              placeholder="feedback"
+              placeholder="异议内容"
               value={feedbackForm.feedback}
               onChange={(e) => setFeedbackForm((s) => ({ ...s, feedback: e.target.value }))}
             />
@@ -788,10 +965,10 @@ export function TransfersPage() {
       </div>
       {renderTable(
         rows.map((x) => ({
-          order_id: x.order_id,
-          status: x.status,
-          feedback: x.feedback ?? "-",
-          detail_count: x.details.length,
+          [TRANSFER_FIELD_LABELS.order_id]: x.order_id,
+          [TRANSFER_FIELD_LABELS.status]: TRANSFER_STATUS_LABELS[x.status],
+          [TRANSFER_FIELD_LABELS.feedback]: x.feedback ?? "-",
+          [TRANSFER_FIELD_LABELS.detail_count]: x.details.length,
         }))
       )}
       <PaginationBar
@@ -854,15 +1031,15 @@ export function TrafficPage() {
       {error ? <p className="error-text">{error}</p> : null}
       <div className="cards-grid">
         <article className="card">
-          <h3>store_id</h3>
+          <h3>门店编号</h3>
           <p>{me?.store_id ?? "-"}</p>
         </article>
         <article className="card">
-          <h3>event</h3>
+          <h3>事件类型</h3>
           <p>{lastEvent}</p>
         </article>
         <article className="card">
-          <h3>data.current_people_count</h3>
+          <h3>当前客流人数</h3>
           <p>{currentPeopleCount}</p>
         </article>
         <article className="card">
@@ -922,11 +1099,11 @@ export function ChatPage() {
   function onSend() {
     const text = query.trim();
     if (!text) {
-      setError("query 不能为空");
+      setError("请输入对话内容");
       return;
     }
     if (!me?.store_id) {
-      setError("未获取到 store_id");
+      setError("未获取到门店编号");
       return;
     }
 
@@ -971,66 +1148,98 @@ export function ChatPage() {
     );
   }
 
+  function onStartNewConversation() {
+    stopStreamRef.current?.();
+    setStreamingContent("");
+    setSending(false);
+    setActiveSessionId(null);
+    setMessages([]);
+    setError("");
+  }
+
+  const activeSession = sessions.find((item) => item.session_id === activeSessionId) ?? null;
+
   return (
-    <section>
+    <section className="chat-page">
       <h2>AI 助手对话</h2>
-      <p>
-        已对齐接口：POST /api/ai/chat/completions、GET /api/ai/chat/sessions、GET
-        /api/ai/chat/history
-      </p>
       {error ? <p className="error-text">{error}</p> : null}
 
-      <div className="ops-grid">
-        <div className="op-card">
-          <h3>会话列表（GET /api/ai/chat/sessions）</h3>
-          <div className="table-actions">
-            {sessions.length === 0 ? <p className="empty">暂无历史会话</p> : null}
-            {sessions.map((item) => (
-              <button
-                key={item.session_id}
-                type="button"
-                onClick={() => setActiveSessionId(item.session_id)}
-              >
-                {item.title} ({item.session_time})
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="op-card">
-          <h3>发起对话（POST /api/ai/chat/completions）</h3>
-          <div className="form-grid">
-            <input
-              placeholder="输入 query"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-            <button type="button" disabled={sending} onClick={onSend}>
-              {sending ? "发送中..." : "发送"}
+      <div className="chat-main-panel">
+        <div className="chat-main-header">
+          <div className="chat-main-header-top">
+            <h3>对话</h3>
+            <button type="button" className="chat-new-btn" onClick={onStartNewConversation}>
+              发起新对话
             </button>
           </div>
-          <p className="hint">当前 session_id: {activeSessionId ?? "null(新会话)"}</p>
+          <p className="hint">
+            当前会话：
+            {activeSession
+              ? `${activeSession.title}（${activeSession.session_time}）`
+              : "新会话（未选择历史会话）"}
+          </p>
+        </div>
+
+        <div className="chat-messages">
+          {messages.length === 0 && !streamingContent ? (
+            <p className="chat-empty">有什么我能帮你的吗？</p>
+          ) : null}
+          {messages.map((msg, idx) => (
+            <article
+              key={`${msg.chat_time}_${idx}`}
+              className={`chat-message ${msg.role === "user" ? "from-user" : "from-assistant"}`}
+            >
+              <header>
+                <strong>{msg.role === "user" ? "你" : "助手"}</strong>
+                <span>{msg.chat_time}</span>
+              </header>
+              <p>{msg.content}</p>
+            </article>
+          ))}
+          {streamingContent ? (
+            <article className="chat-message from-assistant">
+              <header>
+                <strong>助手</strong>
+                <span>streaming</span>
+              </header>
+              <p>{streamingContent}</p>
+            </article>
+          ) : null}
+        </div>
+
+        <div className="chat-composer">
+          <input
+            placeholder="输入 query"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey && !sending) {
+                e.preventDefault();
+                onSend();
+              }
+            }}
+          />
+          <button type="button" disabled={sending} onClick={onSend}>
+            {sending ? "发送中..." : "发送"}
+          </button>
         </div>
       </div>
 
-      <div className="detail-box">
-        <h3>对话记录（GET /api/ai/chat/history）</h3>
-        {messages.length === 0 ? <p className="empty">暂无消息</p> : null}
-        <div className="table-actions">
-          {messages.map((msg, idx) => (
-            <div key={`${msg.chat_time}_${idx}`} className="row-action">
-              <strong>{msg.role}</strong>
-              <span>{msg.chat_time}</span>
-              <span>{msg.content}</span>
-            </div>
+      <div className="op-card chat-session-panel">
+        <h3>会话列表</h3>
+        <div className="chat-session-list">
+          {sessions.length === 0 ? <p className="empty">暂无历史会话</p> : null}
+          {sessions.map((item) => (
+            <button
+              key={item.session_id}
+              type="button"
+              className={`chat-session-item ${activeSessionId === item.session_id ? "active" : ""}`}
+              onClick={() => setActiveSessionId(item.session_id)}
+            >
+              <strong>{item.title}</strong>
+              <span>{item.session_time}</span>
+            </button>
           ))}
-          {streamingContent ? (
-            <div className="row-action">
-              <strong>assistant</strong>
-              <span>streaming</span>
-              <span>{streamingContent}</span>
-            </div>
-          ) : null}
         </div>
       </div>
     </section>
