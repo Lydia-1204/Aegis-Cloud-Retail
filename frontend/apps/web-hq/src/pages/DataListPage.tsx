@@ -9,7 +9,6 @@ import {
   createUser,
   deactivateSku,
   deactivateStore,
-  fetchSkuById,
   fetchSkuCategories,
   fetchSkus,
   fetchStoreById,
@@ -23,6 +22,67 @@ import {
 } from "../services/api";
 
 type Row = Record<string, string | number | null>;
+
+const STORE_FIELD_LABELS = {
+  store_id: "门店ID",
+  store_code: "门店编码",
+  store_name: "门店名称",
+  store_location: "门店位置",
+  store_area: "门店面积",
+  store_status: "门店状态",
+};
+
+const STORE_STATUS_LABELS: Record<"active" | "inactive", string> = {
+  active: "营业中",
+  inactive: "已停用",
+};
+
+const SKU_FIELD_LABELS = {
+  sku_id: "SKU ID",
+  sku_code: "SKU编码",
+  sku_name: "SKU名称",
+  category_name: "分类",
+  category_id: "分类ID",
+  std_cost: "标准成本",
+  sug_price: "建议售价",
+  sku_status: "SKU状态",
+};
+
+const SKU_STATUS_LABELS: Record<string, string> = {
+  sale: "在售",
+  inactive: "已停用",
+};
+
+const USER_FIELD_LABELS = {
+  user_id: "用户ID",
+  user_name: "用户姓名",
+  account_name: "账号",
+  role_name: "角色",
+  role_id: "角色ID",
+  store_id: "门店ID",
+};
+
+const TRANSFER_FIELD_LABELS = {
+  order_id: "调拨单号",
+  store_name: "门店名称",
+  status: "状态",
+  feedback: "异议反馈",
+  detail_count: "明细数量",
+};
+
+const TRANSFER_STATUS_LABELS: Record<TransferOrder["status"], string> = {
+  ai_generated: "AI生成",
+  pending_approval: "待审核",
+  issued_pending_confirmation: "已下发待确认",
+  in_negotiation: "协商中",
+  confirmed_executed: "已确认执行",
+  cancelled: "已作废",
+};
+
+const TRANSFER_DIRECTION_LABELS: Record<"H2S" | "S2H", string> = {
+  H2S: "总部到门店",
+  S2H: "门店到总部",
+};
 
 function renderTable(rows: Row[]) {
   if (rows.length === 0) {
@@ -104,6 +164,7 @@ export function StoresPage() {
   const [keyword, setKeyword] = useState("");
   const [status, setStatus] = useState<"" | "active" | "inactive">("");
   const [detailStore, setDetailStore] = useState<Store | null>(null);
+  const [activeStoreModal, setActiveStoreModal] = useState<"detail" | "edit" | null>(null);
   const [createForm, setCreateForm] = useState({
     store_code: "",
     store_name: "",
@@ -169,6 +230,7 @@ export function StoresPage() {
     try {
       const detail = await fetchStoreById(store_id);
       setDetailStore(detail);
+      setActiveStoreModal("detail");
       setMessage(`已加载门店 ${store_id} 详情`);
     } catch (err) {
       setError(parseError(err));
@@ -183,6 +245,7 @@ export function StoresPage() {
       store_area: String(row.store_area),
       store_status: row.store_status,
     });
+    setActiveStoreModal("edit");
   }
 
   async function onUpdateStore() {
@@ -204,6 +267,7 @@ export function StoresPage() {
     try {
       const updated = await updateStore(store_id, payload);
       setDetailStore(updated);
+      setActiveStoreModal(null);
       setMessage("门店更新成功");
       await loadStores();
     } catch (err) {
@@ -245,31 +309,31 @@ export function StoresPage() {
           }}
         >
           <option value="">全部状态</option>
-          <option value="active">active</option>
-          <option value="inactive">inactive</option>
+          <option value="active">{STORE_STATUS_LABELS.active}</option>
+          <option value="inactive">{STORE_STATUS_LABELS.inactive}</option>
         </select>
       </div>
       <div className="ops-grid">
         <div className="op-card">
-          <h3>新增门店（POST /stores）</h3>
+          <h3>新增门店</h3>
           <div className="form-grid">
             <input
-              placeholder="store_code"
+              placeholder="门店编码"
               value={createForm.store_code}
               onChange={(e) => setCreateForm((s) => ({ ...s, store_code: e.target.value }))}
             />
             <input
-              placeholder="store_name"
+              placeholder="门店名称"
               value={createForm.store_name}
               onChange={(e) => setCreateForm((s) => ({ ...s, store_name: e.target.value }))}
             />
             <input
-              placeholder="store_location"
+              placeholder="门店位置"
               value={createForm.store_location}
               onChange={(e) => setCreateForm((s) => ({ ...s, store_location: e.target.value }))}
             />
             <input
-              placeholder="store_area"
+              placeholder="门店面积"
               value={createForm.store_area}
               onChange={(e) => setCreateForm((s) => ({ ...s, store_area: e.target.value }))}
             />
@@ -279,84 +343,147 @@ export function StoresPage() {
                 setCreateForm((s) => ({ ...s, store_status: e.target.value as "active" | "inactive" }))
               }
             >
-              <option value="active">active</option>
-              <option value="inactive">inactive</option>
+              <option value="active">{STORE_STATUS_LABELS.active}</option>
+              <option value="inactive">{STORE_STATUS_LABELS.inactive}</option>
             </select>
             <button type="button" onClick={onCreateStore}>
               创建
             </button>
           </div>
         </div>
-        <div className="op-card">
-          <h3>编辑门店（PUT /stores/:store_id）</h3>
-          <div className="form-grid">
-            <input
-              placeholder="store_id"
-              value={editForm.store_id}
-              onChange={(e) => setEditForm((s) => ({ ...s, store_id: e.target.value }))}
-            />
-            <input
-              placeholder="store_name?"
-              value={editForm.store_name}
-              onChange={(e) => setEditForm((s) => ({ ...s, store_name: e.target.value }))}
-            />
-            <input
-              placeholder="store_location?"
-              value={editForm.store_location}
-              onChange={(e) => setEditForm((s) => ({ ...s, store_location: e.target.value }))}
-            />
-            <input
-              placeholder="store_area?"
-              value={editForm.store_area}
-              onChange={(e) => setEditForm((s) => ({ ...s, store_area: e.target.value }))}
-            />
-            <select
-              value={editForm.store_status}
-              onChange={(e) =>
-                setEditForm((s) => ({ ...s, store_status: e.target.value as "" | "active" | "inactive" }))
-              }
-            >
-              <option value="">store_status(可选)</option>
-              <option value="active">active</option>
-              <option value="inactive">inactive</option>
-            </select>
-            <button type="button" onClick={onUpdateStore}>
-              更新
-            </button>
-          </div>
-        </div>
       </div>
-      {detailStore ? (
-        <div className="detail-box">
-          <strong>门店详情（GET /stores/:store_id）</strong>
-          <pre>{JSON.stringify(detailStore, null, 2)}</pre>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>{STORE_FIELD_LABELS.store_id}</th>
+              <th>{STORE_FIELD_LABELS.store_code}</th>
+              <th>{STORE_FIELD_LABELS.store_name}</th>
+              <th>{STORE_FIELD_LABELS.store_status}</th>
+              <th>{STORE_FIELD_LABELS.store_area}</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="empty">
+                  暂无数据
+                </td>
+              </tr>
+            ) : (
+              rows.map((x) => (
+                <tr key={x.store_id}>
+                  <td>{x.store_id}</td>
+                  <td>{x.store_code}</td>
+                  <td>{x.store_name}</td>
+                  <td>{STORE_STATUS_LABELS[x.store_status]}</td>
+                  <td>{x.store_area}</td>
+                  <td>
+                    <div className="row-action">
+                      <button type="button" onClick={() => void onFetchStoreDetail(x.store_id)}>
+                        详情
+                      </button>
+                      <button type="button" onClick={() => fillEditForm(x)}>
+                        编辑
+                      </button>
+                      <button type="button" onClick={() => void onDeactivateStore(x.store_id)}>
+                        停用
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {activeStoreModal === "detail" && detailStore ? (
+        <div className="hq-modal-overlay" role="dialog" aria-modal="true">
+          <div className="hq-modal-dialog">
+            <div className="hq-modal-header">
+              <h3>门店详情（GET /stores/:store_id）</h3>
+              <button type="button" onClick={() => setActiveStoreModal(null)} className="hq-modal-close">
+                关闭
+              </button>
+            </div>
+            <div className="hq-modal-body">
+              {renderTable([
+                {
+                  [STORE_FIELD_LABELS.store_id]: detailStore.store_id,
+                  [STORE_FIELD_LABELS.store_code]: detailStore.store_code,
+                  [STORE_FIELD_LABELS.store_name]: detailStore.store_name,
+                  [STORE_FIELD_LABELS.store_location]: detailStore.store_location,
+                  [STORE_FIELD_LABELS.store_area]: detailStore.store_area,
+                  [STORE_FIELD_LABELS.store_status]: STORE_STATUS_LABELS[detailStore.store_status],
+                },
+              ])}
+            </div>
+          </div>
         </div>
       ) : null}
-      {renderTable(
-        rows.map((x) => ({
-          store_id: x.store_id,
-          store_code: x.store_code,
-          store_name: x.store_name,
-          store_status: x.store_status,
-          store_area: x.store_area,
-        }))
-      )}
-      <div className="table-actions">
-        {rows.map((x) => (
-          <div key={x.store_id} className="row-action">
-            <span>store_id={x.store_id}</span>
-            <button type="button" onClick={() => void onFetchStoreDetail(x.store_id)}>
-              详情
-            </button>
-            <button type="button" onClick={() => fillEditForm(x)}>
-              填充编辑
-            </button>
-            <button type="button" onClick={() => void onDeactivateStore(x.store_id)}>
-              停用
-            </button>
+
+      {activeStoreModal === "edit" ? (
+        <div className="hq-modal-overlay" role="dialog" aria-modal="true">
+          <div className="hq-modal-dialog">
+            <div className="hq-modal-header">
+              <h3>编辑门店</h3>
+              <button type="button" onClick={() => setActiveStoreModal(null)} className="hq-modal-close">
+                关闭
+              </button>
+            </div>
+            <div className="hq-modal-body">
+              <div className="form-grid">
+                <label className="hq-form-field">
+                  <span>门店ID（系统编号）</span>
+                  <input value={editForm.store_id} readOnly />
+                </label>
+                <label className="hq-form-field">
+                  <span>门店名称（可选）</span>
+                  <input
+                    value={editForm.store_name}
+                    onChange={(e) => setEditForm((s) => ({ ...s, store_name: e.target.value }))}
+                  />
+                </label>
+                <label className="hq-form-field">
+                  <span>门店位置（可选）</span>
+                  <input
+                    value={editForm.store_location}
+                    onChange={(e) => setEditForm((s) => ({ ...s, store_location: e.target.value }))}
+                  />
+                </label>
+                <label className="hq-form-field">
+                  <span>门店面积（可选）</span>
+                  <input
+                    value={editForm.store_area}
+                    onChange={(e) => setEditForm((s) => ({ ...s, store_area: e.target.value }))}
+                  />
+                </label>
+                <label className="hq-form-field">
+                  <span>门店状态（可选）</span>
+                  <select
+                    value={editForm.store_status}
+                    onChange={(e) =>
+                      setEditForm((s) => ({ ...s, store_status: e.target.value as "" | "active" | "inactive" }))
+                    }
+                  >
+                    <option value="">门店状态（可选）</option>
+                    <option value="active">{STORE_STATUS_LABELS.active}</option>
+                    <option value="inactive">{STORE_STATUS_LABELS.inactive}</option>
+                  </select>
+                </label>
+              </div>
+              <div className="hq-modal-actions">
+                <button type="button" onClick={onUpdateStore}>
+                  更新
+                </button>
+              </div>
+            </div>
           </div>
-        ))}
-      </div>
+        </div>
+      ) : null}
+
       <PaginationBar
         page={page}
         total={total}
@@ -376,7 +503,7 @@ export function SkusPage() {
   const [keyword, setKeyword] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [categories, setCategories] = useState<SKUCategory[]>([]);
-  const [detailSku, setDetailSku] = useState<SKU | null>(null);
+  const [activeSkuModal, setActiveSkuModal] = useState<"edit" | null>(null);
   const [createForm, setCreateForm] = useState({
     sku_code: "",
     sku_name: "",
@@ -431,25 +558,14 @@ export function SkusPage() {
       sug_price: String(row.sug_price),
       force: false,
     });
-  }
-
-  async function onFetchSkuDetail(sku_id: number) {
-    setMessage("");
-    setError("");
-    try {
-      const detail = await fetchSkuById(sku_id);
-      setDetailSku(detail);
-      setMessage(`已加载 SKU ${sku_id} 详情`);
-    } catch (err) {
-      setError(parseError(err));
-    }
+    setActiveSkuModal("edit");
   }
 
   async function onCreateSku() {
     setMessage("");
     setError("");
     try {
-      const created = await createSku({
+      await createSku({
         sku_code: createForm.sku_code.trim(),
         sku_name: createForm.sku_name.trim(),
         category_id: Number(createForm.category_id),
@@ -458,7 +574,6 @@ export function SkusPage() {
         force: createForm.force,
         sku_status: "sale",
       });
-      setDetailSku(created);
       setMessage("SKU 创建成功");
       setCreateForm({
         sku_code: "",
@@ -480,18 +595,18 @@ export function SkusPage() {
     setError("");
     const sku_id = Number(editForm.sku_id);
     if (!sku_id) {
-      setError("请先输入或选择 sku_id");
+      setError("请先输入或选择 SKU ID");
       return;
     }
     try {
-      const updated = await updateSku(sku_id, {
+      await updateSku(sku_id, {
         sku_name: editForm.sku_name.trim() || undefined,
         category_id: toNumberOrUndefined(editForm.category_id),
         std_cost: toNumberOrUndefined(editForm.std_cost),
         sug_price: toNumberOrUndefined(editForm.sug_price),
         force: editForm.force,
       });
-      setDetailSku(updated);
+      setActiveSkuModal(null);
       setMessage("SKU 更新成功");
       await loadSkus();
     } catch (err) {
@@ -542,15 +657,15 @@ export function SkusPage() {
       </div>
       <div className="ops-grid">
         <div className="op-card">
-          <h3>新增 SKU（POST /skus）</h3>
+          <h3>新增 SKU</h3>
           <div className="form-grid">
             <input
-              placeholder="sku_code"
+              placeholder="SKU编码"
               value={createForm.sku_code}
               onChange={(e) => setCreateForm((s) => ({ ...s, sku_code: e.target.value }))}
             />
             <input
-              placeholder="sku_name"
+              placeholder="SKU名称"
               value={createForm.sku_name}
               onChange={(e) => setCreateForm((s) => ({ ...s, sku_name: e.target.value }))}
             />
@@ -558,7 +673,7 @@ export function SkusPage() {
               value={createForm.category_id}
               onChange={(e) => setCreateForm((s) => ({ ...s, category_id: e.target.value }))}
             >
-              <option value="">category_id</option>
+              <option value="">分类</option>
               {categoryOptions.map((x) => (
                 <option key={x.value} value={x.value}>
                   {x.label}
@@ -566,12 +681,12 @@ export function SkusPage() {
               ))}
             </select>
             <input
-              placeholder="std_cost"
+              placeholder="标准成本"
               value={createForm.std_cost}
               onChange={(e) => setCreateForm((s) => ({ ...s, std_cost: e.target.value }))}
             />
             <input
-              placeholder="sug_price"
+              placeholder="建议售价"
               value={createForm.sug_price}
               onChange={(e) => setCreateForm((s) => ({ ...s, sug_price: e.target.value }))}
             />
@@ -581,93 +696,60 @@ export function SkusPage() {
                 checked={createForm.force}
                 onChange={(e) => setCreateForm((s) => ({ ...s, force: e.target.checked }))}
               />
-              force
+              强制覆盖
             </label>
             <button type="button" onClick={onCreateSku}>
               创建
             </button>
           </div>
         </div>
-        <div className="op-card">
-          <h3>编辑 SKU（PUT /skus/:sku_id）</h3>
-          <div className="form-grid">
-            <input
-              placeholder="sku_id"
-              value={editForm.sku_id}
-              onChange={(e) => setEditForm((s) => ({ ...s, sku_id: e.target.value }))}
-            />
-            <input
-              placeholder="sku_name?"
-              value={editForm.sku_name}
-              onChange={(e) => setEditForm((s) => ({ ...s, sku_name: e.target.value }))}
-            />
-            <select
-              value={editForm.category_id}
-              onChange={(e) => setEditForm((s) => ({ ...s, category_id: e.target.value }))}
-            >
-              <option value="">category_id(可选)</option>
-              {categoryOptions.map((x) => (
-                <option key={x.value} value={x.value}>
-                  {x.label}
-                </option>
-              ))}
-            </select>
-            <input
-              placeholder="std_cost?"
-              value={editForm.std_cost}
-              onChange={(e) => setEditForm((s) => ({ ...s, std_cost: e.target.value }))}
-            />
-            <input
-              placeholder="sug_price?"
-              value={editForm.sug_price}
-              onChange={(e) => setEditForm((s) => ({ ...s, sug_price: e.target.value }))}
-            />
-            <label className="check-line">
-              <input
-                type="checkbox"
-                checked={editForm.force}
-                onChange={(e) => setEditForm((s) => ({ ...s, force: e.target.checked }))}
-              />
-              force
-            </label>
-            <button type="button" onClick={onUpdateSku}>
-              更新
-            </button>
-          </div>
-        </div>
       </div>
-      {detailSku ? (
-        <div className="detail-box">
-          <strong>SKU 详情（GET /skus/:sku_id）</strong>
-          <pre>{JSON.stringify(detailSku, null, 2)}</pre>
-        </div>
-      ) : null}
-      {renderTable(
-        rows.map((x) => ({
-          sku_id: x.sku_id,
-          sku_code: x.sku_code,
-          sku_name: x.sku_name,
-          category_name: x.category_name,
-          std_cost: x.std_cost,
-          sug_price: x.sug_price,
-          sku_status: x.sku_status,
-        }))
-      )}
-      <div className="table-actions">
-        {rows.map((x) => (
-          <div key={x.sku_id} className="row-action">
-            <span>sku_id={x.sku_id}</span>
-            <button type="button" onClick={() => void onFetchSkuDetail(x.sku_id)}>
-              详情
-            </button>
-            <button type="button" onClick={() => fillEditSku(x)}>
-              填充编辑
-            </button>
-            <button type="button" onClick={() => void onDeactivateSku(x.sku_id)}>
-              停用
-            </button>
-          </div>
-        ))}
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>{SKU_FIELD_LABELS.sku_id}</th>
+              <th>{SKU_FIELD_LABELS.sku_code}</th>
+              <th>{SKU_FIELD_LABELS.sku_name}</th>
+              <th>{SKU_FIELD_LABELS.category_name}</th>
+              <th>{SKU_FIELD_LABELS.std_cost}</th>
+              <th>{SKU_FIELD_LABELS.sug_price}</th>
+              <th>{SKU_FIELD_LABELS.sku_status}</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={8} className="empty">
+                  暂无数据
+                </td>
+              </tr>
+            ) : (
+              rows.map((x) => (
+                <tr key={x.sku_id}>
+                  <td>{x.sku_id}</td>
+                  <td>{x.sku_code}</td>
+                  <td>{x.sku_name}</td>
+                  <td>{x.category_name}</td>
+                  <td>{x.std_cost}</td>
+                  <td>{x.sug_price}</td>
+                  <td>{SKU_STATUS_LABELS[x.sku_status] ?? x.sku_status}</td>
+                  <td>
+                    <div className="row-action">
+                      <button type="button" onClick={() => fillEditSku(x)}>
+                        编辑
+                      </button>
+                      <button type="button" onClick={() => void onDeactivateSku(x.sku_id)}>
+                        停用
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
       <PaginationBar
         page={page}
@@ -676,6 +758,74 @@ export function SkusPage() {
         onPrev={() => setPage((p) => p - 1)}
         onNext={() => setPage((p) => p + 1)}
       />
+      {activeSkuModal === "edit" ? (
+        <div className="hq-modal-overlay" role="dialog" aria-modal="true">
+          <div className="hq-modal-dialog">
+            <div className="hq-modal-header">
+              <h3>编辑 SKU</h3>
+              <button type="button" onClick={() => setActiveSkuModal(null)} className="hq-modal-close">
+                关闭
+              </button>
+            </div>
+            <div className="hq-modal-body">
+              <div className="form-grid hq-sku-edit-grid">
+                <label className="hq-form-field">
+                  <span>SKU ID（系统编号）</span>
+                  <input value={editForm.sku_id} readOnly />
+                </label>
+                <label className="hq-form-field">
+                  <span>SKU 名称（商品名）</span>
+                  <input
+                    value={editForm.sku_name}
+                    onChange={(e) => setEditForm((s) => ({ ...s, sku_name: e.target.value }))}
+                  />
+                </label>
+                <label className="hq-form-field">
+                  <span>分类</span>
+                  <select
+                    value={editForm.category_id}
+                    onChange={(e) => setEditForm((s) => ({ ...s, category_id: e.target.value }))}
+                  >
+                    <option value="">分类（可选）</option>
+                    {categoryOptions.map((x) => (
+                      <option key={x.value} value={x.value}>
+                        {x.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="hq-form-field">
+                  <span>标准成本（元/件）</span>
+                  <input
+                    value={editForm.std_cost}
+                    onChange={(e) => setEditForm((s) => ({ ...s, std_cost: e.target.value }))}
+                  />
+                </label>
+                <label className="hq-form-field">
+                  <span>建议售价（元/件）</span>
+                  <input
+                    value={editForm.sug_price}
+                    onChange={(e) => setEditForm((s) => ({ ...s, sug_price: e.target.value }))}
+                  />
+                </label>
+                <label className="check-line hq-sku-edit-check">
+                  <input
+                    type="checkbox"
+                    checked={editForm.force}
+                    onChange={(e) => setEditForm((s) => ({ ...s, force: e.target.checked }))}
+                  />
+                  强制覆盖
+                </label>
+              </div>
+              <div className="hq-modal-actions">
+                <button type="button" className="hq-sku-edit-submit" onClick={onUpdateSku}>
+                  更新
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -700,6 +850,7 @@ export function UsersPage() {
     role_id: "",
     user_name: "",
   });
+  const [activeUserModal, setActiveUserModal] = useState<"edit" | null>(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -725,6 +876,7 @@ export function UsersPage() {
       role_id: String(row.role_id),
       user_name: row.user_name,
     });
+    setActiveUserModal("edit");
   }
 
   async function onCreateUser() {
@@ -758,7 +910,7 @@ export function UsersPage() {
     setError("");
     const user_id = Number(editForm.user_id);
     if (!user_id) {
-      setError("请先输入或选择 user_id");
+      setError("请先输入或选择用户ID");
       return;
     }
     try {
@@ -767,6 +919,7 @@ export function UsersPage() {
         role_id: toNumberOrUndefined(editForm.role_id),
         user_name: editForm.user_name.trim() || undefined,
       });
+      setActiveUserModal(null);
       setMessage("用户更新成功");
       await loadUsers();
     } catch (err) {
@@ -799,30 +952,30 @@ export function UsersPage() {
       </div>
       <div className="ops-grid">
         <div className="op-card">
-          <h3>新增用户（POST /users）</h3>
+          <h3>新增用户</h3>
           <div className="form-grid">
             <input
-              placeholder="store_id"
+              placeholder="门店ID"
               value={createForm.store_id}
               onChange={(e) => setCreateForm((s) => ({ ...s, store_id: e.target.value }))}
             />
             <input
-              placeholder="role_id"
+              placeholder="角色ID"
               value={createForm.role_id}
               onChange={(e) => setCreateForm((s) => ({ ...s, role_id: e.target.value }))}
             />
             <input
-              placeholder="user_name"
+              placeholder="用户姓名"
               value={createForm.user_name}
               onChange={(e) => setCreateForm((s) => ({ ...s, user_name: e.target.value }))}
             />
             <input
-              placeholder="account_name"
+              placeholder="账号"
               value={createForm.account_name}
               onChange={(e) => setCreateForm((s) => ({ ...s, account_name: e.target.value }))}
             />
             <input
-              placeholder="password"
+              placeholder="密码"
               type="password"
               value={createForm.password}
               onChange={(e) => setCreateForm((s) => ({ ...s, password: e.target.value }))}
@@ -832,54 +985,96 @@ export function UsersPage() {
             </button>
           </div>
         </div>
-        <div className="op-card">
-          <h3>编辑用户（PUT /users/:user_id）</h3>
-          <div className="form-grid">
-            <input
-              placeholder="user_id"
-              value={editForm.user_id}
-              onChange={(e) => setEditForm((s) => ({ ...s, user_id: e.target.value }))}
-            />
-            <input
-              placeholder="store_id?"
-              value={editForm.store_id}
-              onChange={(e) => setEditForm((s) => ({ ...s, store_id: e.target.value }))}
-            />
-            <input
-              placeholder="role_id?"
-              value={editForm.role_id}
-              onChange={(e) => setEditForm((s) => ({ ...s, role_id: e.target.value }))}
-            />
-            <input
-              placeholder="user_name?"
-              value={editForm.user_name}
-              onChange={(e) => setEditForm((s) => ({ ...s, user_name: e.target.value }))}
-            />
-            <button type="button" onClick={onUpdateUser}>
-              更新
-            </button>
+      </div>
+
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>{USER_FIELD_LABELS.user_id}</th>
+              <th>{USER_FIELD_LABELS.user_name}</th>
+              <th>{USER_FIELD_LABELS.account_name}</th>
+              <th>{USER_FIELD_LABELS.role_name}</th>
+              <th>{USER_FIELD_LABELS.store_id}</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="empty">
+                  暂无数据
+                </td>
+              </tr>
+            ) : (
+              rows.map((x) => (
+                <tr key={x.user_id}>
+                  <td>{x.user_id}</td>
+                  <td>{x.user_name}</td>
+                  <td>{x.account_name}</td>
+                  <td>{x.role_name}</td>
+                  <td>{x.store_id}</td>
+                  <td>
+                    <div className="row-action">
+                      <button type="button" onClick={() => fillEditUser(x)}>
+                        编辑
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {activeUserModal === "edit" ? (
+        <div className="hq-modal-overlay" role="dialog" aria-modal="true">
+          <div className="hq-modal-dialog">
+            <div className="hq-modal-header">
+              <h3>编辑用户</h3>
+              <button type="button" onClick={() => setActiveUserModal(null)} className="hq-modal-close">
+                关闭
+              </button>
+            </div>
+            <div className="hq-modal-body">
+              <div className="form-grid">
+                <label className="hq-form-field">
+                  <span>用户ID（系统编号）</span>
+                  <input value={editForm.user_id} readOnly />
+                </label>
+                <label className="hq-form-field">
+                  <span>门店ID（可选）</span>
+                  <input
+                    value={editForm.store_id}
+                    onChange={(e) => setEditForm((s) => ({ ...s, store_id: e.target.value }))}
+                  />
+                </label>
+                <label className="hq-form-field">
+                  <span>角色ID（可选）</span>
+                  <input
+                    value={editForm.role_id}
+                    onChange={(e) => setEditForm((s) => ({ ...s, role_id: e.target.value }))}
+                  />
+                </label>
+                <label className="hq-form-field">
+                  <span>用户姓名（可选）</span>
+                  <input
+                    value={editForm.user_name}
+                    onChange={(e) => setEditForm((s) => ({ ...s, user_name: e.target.value }))}
+                  />
+                </label>
+              </div>
+              <div className="hq-modal-actions">
+                <button type="button" onClick={onUpdateUser}>
+                  更新
+                </button>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
-      {renderTable(
-        rows.map((x) => ({
-          user_id: x.user_id,
-          user_name: x.user_name,
-          account_name: x.account_name,
-          role_name: x.role_name,
-          store_id: x.store_id,
-        }))
-      )}
-      <div className="table-actions">
-        {rows.map((x) => (
-          <div key={x.user_id} className="row-action">
-            <span>user_id={x.user_id}</span>
-            <button type="button" onClick={() => fillEditUser(x)}>
-              填充编辑
-            </button>
-          </div>
-        ))}
-      </div>
+      ) : null}
+
       <PaginationBar
         page={page}
         total={total}
@@ -974,7 +1169,7 @@ export function TransfersPage() {
   async function onConfirmTransfer() {
     const order_id = Number(confirmForm.order_id);
     if (!order_id) {
-      setError("请输入 order_id");
+      setError("请输入调拨单号");
       return;
     }
     setMessage("");
@@ -1035,12 +1230,12 @@ export function TransfersPage() {
           <option value="">全部状态</option>
           {transferStatusOptions.map((item) => (
             <option key={item} value={item}>
-              {item}
+              {TRANSFER_STATUS_LABELS[item]}
             </option>
           ))}
         </select>
         <input
-          placeholder="start_date"
+          placeholder="开始日期"
           value={startDate}
           onChange={(e) => {
             setPage(1);
@@ -1048,7 +1243,7 @@ export function TransfersPage() {
           }}
         />
         <input
-          placeholder="end_date"
+          placeholder="结束日期"
           value={endDate}
           onChange={(e) => {
             setPage(1);
@@ -1061,22 +1256,22 @@ export function TransfersPage() {
           <h3>新建调拨（POST /transfers）</h3>
           <div className="form-grid">
             <input
-              placeholder="store_id"
+              placeholder="门店ID"
               value={createForm.store_id}
               onChange={(e) => setCreateForm((s) => ({ ...s, store_id: e.target.value }))}
             />
             <input
-              placeholder="sku_id"
+              placeholder="SKU ID"
               value={createForm.sku_id}
               onChange={(e) => setCreateForm((s) => ({ ...s, sku_id: e.target.value }))}
             />
             <input
-              placeholder="suggested_qty"
+              placeholder="建议数量"
               value={createForm.suggested_qty}
               onChange={(e) => setCreateForm((s) => ({ ...s, suggested_qty: e.target.value }))}
             />
             <input
-              placeholder="actual_qty"
+              placeholder="实际数量"
               value={createForm.actual_qty}
               onChange={(e) => setCreateForm((s) => ({ ...s, actual_qty: e.target.value }))}
             />
@@ -1089,8 +1284,8 @@ export function TransfersPage() {
                 }))
               }
             >
-              <option value="H2S">H2S</option>
-              <option value="S2H">S2H</option>
+              <option value="H2S">{TRANSFER_DIRECTION_LABELS.H2S}</option>
+              <option value="S2H">{TRANSFER_DIRECTION_LABELS.S2H}</option>
             </select>
             <button type="button" onClick={onCreateTransfer}>
               创建
@@ -1101,17 +1296,17 @@ export function TransfersPage() {
           <h3>协商确认（PATCH /transfers/:order_id/confirm）</h3>
           <div className="form-grid">
             <input
-              placeholder="order_id"
+              placeholder="调拨单号"
               value={confirmForm.order_id}
               onChange={(e) => setConfirmForm((s) => ({ ...s, order_id: e.target.value }))}
             />
             <input
-              placeholder="detail_id(可选)"
+              placeholder="明细ID（可选）"
               value={confirmForm.detail_id}
               onChange={(e) => setConfirmForm((s) => ({ ...s, detail_id: e.target.value }))}
             />
             <input
-              placeholder="actual_qty(可选)"
+              placeholder="实际数量（可选）"
               value={confirmForm.actual_qty}
               onChange={(e) => setConfirmForm((s) => ({ ...s, actual_qty: e.target.value }))}
             />
@@ -1123,17 +1318,17 @@ export function TransfersPage() {
       </div>
       {renderTable(
         rows.map((x) => ({
-          order_id: x.order_id,
-          store_name: x.store_name,
-          status: x.status,
-          feedback: x.feedback ?? "-",
-          detail_count: x.details.length,
+          [TRANSFER_FIELD_LABELS.order_id]: x.order_id,
+          [TRANSFER_FIELD_LABELS.store_name]: x.store_name,
+          [TRANSFER_FIELD_LABELS.status]: TRANSFER_STATUS_LABELS[x.status],
+          [TRANSFER_FIELD_LABELS.feedback]: x.feedback ?? "-",
+          [TRANSFER_FIELD_LABELS.detail_count]: x.details.length,
         }))
       )}
       <div className="table-actions">
         {rows.map((x) => (
           <div key={x.order_id} className="row-action">
-            <span>order_id={x.order_id}</span>
+            <span>调拨单号={x.order_id}</span>
             <button type="button" onClick={() => void onIssueTransfer(x.order_id)}>
               下发
             </button>

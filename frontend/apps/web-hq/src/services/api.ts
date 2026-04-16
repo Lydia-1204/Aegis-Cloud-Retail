@@ -2,11 +2,20 @@ import {
   AegisHttpClient,
   HttpError,
   AegisMockApi,
+  mockWebSocketTraffic,
   DEFAULT_API_BASES,
   type ApiResponse,
+  type ChatCompletionChunk,
+  type ChatCompletionReq,
+  type ChatHistoryRes,
+  type ChatSessionListData,
+  type ChatSessionsQuery,
+  type ChatSessionItem,
   type LoginReq,
   type LoginRes,
   type PagedData,
+  type InventoryItem,
+  type InventoryQuery,
   type SKUCategory,
   type SKUCreateReq,
   type SKUUpdateReq,
@@ -16,6 +25,9 @@ import {
   type StoreUpdateReq,
   type Store,
   type StoresQuery,
+  type SalesDaily,
+  type SalesDailyDetail,
+  type SalesQuery,
   type TransferOrder,
   type TransfersQuery,
   type UserCreateReq,
@@ -25,6 +37,7 @@ import {
   type ConfirmReq,
   type UserMe,
   type UsersQuery,
+  type WSTrafficUpdate,
 } from "@aegis/shared";
 
 const useMock = import.meta.env.VITE_USE_MOCK !== "false";
@@ -78,6 +91,198 @@ function unwrapMockEnvelopeNullable<T>(payload: ApiResponse<T>): T {
 
 function authedHttp(): AegisHttpClient {
   return httpWithToken(readAuthToken());
+}
+
+export interface ChatCompletionsHandlers {
+  onChunk: (chunk: ChatCompletionChunk) => void;
+  onError?: (message: string) => void;
+}
+
+export async function fetchChatSessions(query: ChatSessionsQuery): Promise<ChatSessionListData> {
+  if (useMock) {
+    const res = await mockApi.getChatSessions(query);
+    return unwrapMockEnvelope(res);
+  }
+  return authedHttp().getPaged<ChatSessionItem>("aiAssistant", "/ai/chat/sessions", query);
+}
+
+export async function fetchChatHistory(session_id: string): Promise<ChatHistoryRes> {
+  if (useMock) {
+    const res = await mockApi.getChatHistory(session_id);
+    return unwrapMockEnvelope(res);
+  }
+  return authedHttp().getOne<ChatHistoryRes>(
+    "aiAssistant",
+    `/ai/chat/history?session_id=${encodeURIComponent(session_id)}`
+  );
+}
+
+export function streamChatCompletions(
+  payload: ChatCompletionReq,
+  handlers: ChatCompletionsHandlers
+): () => void {
+  if (useMock) {
+    return mockApi.streamChatCompletions(payload, handlers.onChunk);
+  }
+
+  const token = readAuthToken();
+  if (!token) {
+    handlers.onError?.("缺少 JWT token，无法发起对话");
+    return () => {};
+  }
+
+  const controller = new AbortController();
+  void (async () => {
+    try {
+      const res = await fetch(`${DEFAULT_API_BASES.aiAssistant}/ai/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "text/event-stream",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+
+      if (!res.ok || !res.body) {
+        handlers.onError?.("AI 对话连接失败");
+        return;
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let buffer = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) {
+          break;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith("data:")) {
+            continue;
+          }
+          const raw = trimmed.slice("data:".length).trim();
+          if (!raw) {
+            continue;
+          }
+          try {
+            const chunk = JSON.parse(raw) as ChatCompletionChunk;
+            handlers.onChunk(chunk);
+          } catch {
+            handlers.onError?.("AI 对话流消息解析失败");
+            return;
+          }
+        }
+      }
+    } catch {
+      if (!controller.signal.aborted) {
+        handlers.onError?.("AI 对话流请求异常");
+      }
+    }
+  })();
+
+  return () => {
+    controller.abort();
+  };
+}
+
+function normalizeWsBase(): string {
+  const base = DEFAULT_API_BASES.trafficSense;
+  if (base.startsWith("https://")) {
+    return `wss://${base.slice("https://".length)}`;
+  }
+  if (base.startsWith("http://")) {
+    return `ws://${base.slice("http://".length)}`;
+  }
+  return base;
+}
+
+function isWSTrafficUpdate(payload: unknown, expectedStoreId: number): payload is WSTrafficUpdate {
+  if (!payload || typeof payload !== "object") {
+    return false;
+  }
+  const data = payload as Record<string, unknown>;
+  if (data.event !== "TRAFFIC_TICK") {
+    return false;
+  }
+  if (data.store_id !== expectedStoreId) {
+    return false;
+  }
+  if (!data.data || typeof data.data !== "object") {
+    return false;
+  }
+  const tickData = data.data as Record<string, unknown>;
+  return typeof tickData.current_people_count === "number";
+}
+
+export interface TrafficRealtimeHandlers {
+  onTick: (payload: WSTrafficUpdate) => void;
+  onOpen?: () => void;
+  onError?: (message: string) => void;
+  onClose?: () => void;
+}
+
+export function subscribeTrafficRealtime(
+  store_id: number,
+  handlers: TrafficRealtimeHandlers
+): () => void {
+  if (useMock) {
+    handlers.onOpen?.();
+    return mockWebSocketTraffic(store_id, (count) => {
+      handlers.onTick({
+        event: "TRAFFIC_TICK",
+        store_id,
+        data: { current_people_count: count },
+      });
+    });
+  }
+
+  const token = readAuthToken();
+  if (!token) {
+    handlers.onError?.("缺少 JWT token，无法订阅实时客流");
+    return () => {};
+  }
+
+  const ws = new WebSocket(
+    `${normalizeWsBase()}/ai/traffic/realtime/${store_id}?token=${encodeURIComponent(token)}`
+  );
+
+  ws.onopen = () => {
+    handlers.onOpen?.();
+  };
+
+  ws.onmessage = (evt) => {
+    try {
+      const payload = JSON.parse(evt.data as string) as unknown;
+      if (!isWSTrafficUpdate(payload, store_id)) {
+        handlers.onError?.("收到的客流推送字段不符合规范");
+        return;
+      }
+      handlers.onTick(payload);
+    } catch {
+      handlers.onError?.("客流推送消息解析失败");
+    }
+  };
+
+  ws.onerror = () => {
+    handlers.onError?.("实时客流连接异常");
+  };
+
+  ws.onclose = () => {
+    handlers.onClose?.();
+  };
+
+  return () => {
+    ws.close();
+  };
 }
 
 export async function login(payload: LoginReq): Promise<LoginRes> {
@@ -264,6 +469,30 @@ export async function updateUser(user_id: number, payload: UserUpdateReq): Promi
     throw new HttpError(res.status, payloadRes.message || "请求失败");
   }
   return payloadRes.data;
+}
+
+export async function fetchSalesDaily(query: SalesQuery): Promise<PagedData<SalesDaily>> {
+  if (useMock) {
+    const res = await mockApi.getSales(query);
+    return unwrapMockEnvelope(res);
+  }
+  return authedHttp().getPaged<SalesDaily>("storeOps", "/sales/daily", query);
+}
+
+export async function fetchSalesDailyDetail(sales_id: number): Promise<SalesDailyDetail> {
+  if (useMock) {
+    const res = await mockApi.getSalesById(sales_id);
+    return unwrapMockEnvelope(res);
+  }
+  return authedHttp().getOne<SalesDailyDetail>("storeOps", `/sales/daily/${sales_id}`);
+}
+
+export async function fetchInventory(query: InventoryQuery): Promise<PagedData<InventoryItem>> {
+  if (useMock) {
+    const res = await mockApi.getInventory(query);
+    return unwrapMockEnvelope(res);
+  }
+  return authedHttp().getPaged<InventoryItem>("storeOps", "/inventory", query);
 }
 
 export async function fetchTransfers(query: TransfersQuery): Promise<PagedData<TransferOrder>> {

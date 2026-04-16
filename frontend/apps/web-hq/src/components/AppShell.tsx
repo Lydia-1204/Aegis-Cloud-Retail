@@ -3,6 +3,8 @@ import { useAuth } from "../auth/AuthContext";
 
 const navItems: Array<{ to: string; label: string }> = [
   { to: "/", label: "总部总览" },
+  { to: "/analytics", label: "经营分析" },
+  { to: "/chat", label: "AI 对话" },
   { to: "/stores", label: "门店管理" },
   { to: "/skus", label: "SKU目录" },
   { to: "/users", label: "用户管理" },

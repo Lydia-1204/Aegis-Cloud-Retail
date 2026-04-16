@@ -8,7 +8,9 @@ import {
   UsersPage,
 } from "./pages/DataListPage";
 import { LoginPage } from "./pages/LoginPage";
+import { ChatPage } from "./pages/ChatPage";
 import { OverviewPage } from "./pages/OverviewPage";
+import { GlobalAnalyticsPage } from "./pages/GlobalAnalyticsPage";
 
 export function App() {
   return (
@@ -18,6 +20,8 @@ export function App() {
         <Route element={<RequireRole role="Head" />}>
           <Route element={<AppShell />}>
             <Route path="/" element={<OverviewPage />} />
+            <Route path="/chat" element={<ChatPage />} />
+            <Route path="/analytics" element={<GlobalAnalyticsPage />} />
             <Route path="/stores" element={<StoresPage />} />
             <Route path="/skus" element={<SkusPage />} />
             <Route path="/users" element={<UsersPage />} />
