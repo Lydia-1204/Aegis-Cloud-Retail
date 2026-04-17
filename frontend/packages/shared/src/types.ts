@@ -227,6 +227,11 @@ export interface UserUpdateReq {
   user_name?: string;
 }
 
+export interface PasswordChangeReq {
+  old_password: string;
+  new_password: string;
+}
+
 export interface SalesDaily {
   sales_id: number;
   store_id: number;
@@ -311,6 +316,8 @@ export interface TransferOrder {
   store_name: string;
   status: TransferStatus;
   feedback: string | null;
+  created_at: string;
+  updated_at: string;
   details: TransferDetail[];
 }
 

@@ -1110,9 +1110,21 @@ export function TransfersPage() {
     actual_qty: "",
     transfer_direction: "H2S" as "H2S" | "S2H",
   });
-  const [confirmForm, setConfirmForm] = useState({ order_id: "", detail_id: "", actual_qty: "" });
+  const [activeConfirmOrder, setActiveConfirmOrder] = useState<TransferOrder | null>(null);
+  const [confirmForm, setConfirmForm] = useState({ detail_id: "", actual_qty: "" });
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+
+  function formatTransferDate(raw: string): string {
+    if (!raw) {
+      return "-";
+    }
+    const t = new Date(raw);
+    if (Number.isNaN(t.getTime())) {
+      return raw;
+    }
+    return t.toLocaleString("zh-CN", { hour12: false });
+  }
 
   async function loadTransfers(targetPage = page) {
     const res = await fetchTransfers({
@@ -1166,12 +1178,16 @@ export function TransfersPage() {
     }
   }
 
-  async function onConfirmTransfer() {
-    const order_id = Number(confirmForm.order_id);
-    if (!order_id) {
-      setError("请输入调拨单号");
-      return;
-    }
+  function openConfirmModal(order: TransferOrder) {
+    const firstDetail = order.details[0];
+    setActiveConfirmOrder(order);
+    setConfirmForm({
+      detail_id: firstDetail ? String(firstDetail.detail_id) : "",
+      actual_qty: firstDetail ? String(firstDetail.actual_qty) : "",
+    });
+  }
+
+  async function onConfirmTransfer(order_id: number) {
     setMessage("");
     setError("");
     try {
@@ -1187,6 +1203,7 @@ export function TransfersPage() {
               ]
             : undefined,
       });
+      setActiveConfirmOrder(null);
       setMessage(`调拨单 ${order_id} 已重下发`);
       await loadTransfers();
     } catch (err) {
@@ -1234,26 +1251,36 @@ export function TransfersPage() {
             </option>
           ))}
         </select>
-        <input
-          placeholder="开始日期"
-          value={startDate}
-          onChange={(e) => {
-            setPage(1);
-            setStartDate(e.target.value);
-          }}
-        />
-        <input
-          placeholder="结束日期"
-          value={endDate}
-          onChange={(e) => {
-            setPage(1);
-            setEndDate(e.target.value);
-          }}
-        />
+        <label className="transfer-date-filter">
+          <span>创建开始日期</span>
+          <input
+            type="date"
+            aria-label="按创建日期筛选-开始日期"
+            title="按创建日期筛选-开始日期"
+            value={startDate}
+            onChange={(e) => {
+              setPage(1);
+              setStartDate(e.target.value);
+            }}
+          />
+        </label>
+        <label className="transfer-date-filter">
+          <span>创建结束日期</span>
+          <input
+            type="date"
+            aria-label="按创建日期筛选-结束日期"
+            title="按创建日期筛选-结束日期"
+            value={endDate}
+            onChange={(e) => {
+              setPage(1);
+              setEndDate(e.target.value);
+            }}
+          />
+        </label>
       </div>
       <div className="ops-grid">
         <div className="op-card">
-          <h3>新建调拨（POST /transfers）</h3>
+          <h3>新建调拨</h3>
           <div className="form-grid">
             <input
               placeholder="门店ID"
@@ -1292,52 +1319,57 @@ export function TransfersPage() {
             </button>
           </div>
         </div>
-        <div className="op-card">
-          <h3>协商确认（PATCH /transfers/:order_id/confirm）</h3>
-          <div className="form-grid">
-            <input
-              placeholder="调拨单号"
-              value={confirmForm.order_id}
-              onChange={(e) => setConfirmForm((s) => ({ ...s, order_id: e.target.value }))}
-            />
-            <input
-              placeholder="明细ID（可选）"
-              value={confirmForm.detail_id}
-              onChange={(e) => setConfirmForm((s) => ({ ...s, detail_id: e.target.value }))}
-            />
-            <input
-              placeholder="实际数量（可选）"
-              value={confirmForm.actual_qty}
-              onChange={(e) => setConfirmForm((s) => ({ ...s, actual_qty: e.target.value }))}
-            />
-            <button type="button" onClick={onConfirmTransfer}>
-              协商后重下发
-            </button>
-          </div>
-        </div>
       </div>
-      {renderTable(
-        rows.map((x) => ({
-          [TRANSFER_FIELD_LABELS.order_id]: x.order_id,
-          [TRANSFER_FIELD_LABELS.store_name]: x.store_name,
-          [TRANSFER_FIELD_LABELS.status]: TRANSFER_STATUS_LABELS[x.status],
-          [TRANSFER_FIELD_LABELS.feedback]: x.feedback ?? "-",
-          [TRANSFER_FIELD_LABELS.detail_count]: x.details.length,
-        }))
-      )}
-      <div className="table-actions">
-        {rows.map((x) => (
-          <div key={x.order_id} className="row-action">
-            <span>调拨单号={x.order_id}</span>
-            <button type="button" onClick={() => void onIssueTransfer(x.order_id)}>
-              下发
-            </button>
-            <button type="button" onClick={() => void onCancelTransfer(x.order_id)}>
-              作废
-            </button>
-          </div>
-        ))}
+
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>{TRANSFER_FIELD_LABELS.order_id}</th>
+              <th>{TRANSFER_FIELD_LABELS.store_name}</th>
+              <th>{TRANSFER_FIELD_LABELS.status}</th>
+              <th>创建日期</th>
+              <th>更新日期</th>
+              <th>{TRANSFER_FIELD_LABELS.detail_count}</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="empty">
+                  暂无数据
+                </td>
+              </tr>
+            ) : (
+              rows.map((x) => (
+                <tr key={x.order_id}>
+                  <td>{x.order_id}</td>
+                  <td>{x.store_name}</td>
+                  <td>{TRANSFER_STATUS_LABELS[x.status]}</td>
+                  <td>{formatTransferDate(x.created_at)}</td>
+                  <td>{formatTransferDate(x.updated_at)}</td>
+                  <td>{x.details.length}</td>
+                  <td>
+                    <div className="row-action">
+                      <button type="button" onClick={() => openConfirmModal(x)}>
+                        协商确认
+                      </button>
+                      <button type="button" onClick={() => void onIssueTransfer(x.order_id)}>
+                        下发
+                      </button>
+                      <button type="button" onClick={() => void onCancelTransfer(x.order_id)}>
+                        作废
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
       </div>
+
       <PaginationBar
         page={page}
         total={total}
@@ -1345,6 +1377,85 @@ export function TransfersPage() {
         onPrev={() => setPage((p) => p - 1)}
         onNext={() => setPage((p) => p + 1)}
       />
+
+      {activeConfirmOrder ? (
+        <div className="hq-modal-overlay" role="dialog" aria-modal="true">
+          <div className="hq-modal-dialog">
+            <div className="hq-modal-header">
+              <h3>协商确认</h3>
+              <button type="button" onClick={() => setActiveConfirmOrder(null)} className="hq-modal-close">
+                关闭
+              </button>
+            </div>
+            <div className="hq-modal-body">
+              <p className="hint">调拨单号：{activeConfirmOrder.order_id}</p>
+              <p className="hint">协商反馈：{activeConfirmOrder.feedback ?? "-"}</p>
+
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>明细ID</th>
+                      <th>SKU名称</th>
+                      <th>建议数量</th>
+                      <th>实际数量</th>
+                      <th>调拨方向</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {activeConfirmOrder.details.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="empty">
+                          暂无明细
+                        </td>
+                      </tr>
+                    ) : (
+                      activeConfirmOrder.details.map((detail) => (
+                        <tr key={detail.detail_id}>
+                          <td>{detail.detail_id}</td>
+                          <td>{detail.sku_name}</td>
+                          <td>{detail.suggested_qty}</td>
+                          <td>{detail.actual_qty}</td>
+                          <td>{TRANSFER_DIRECTION_LABELS[detail.transfer_direction]}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="form-grid" style={{ marginTop: 12 }}>
+                <label className="hq-form-field">
+                  <span>调拨单号（系统只读）</span>
+                  <input value={String(activeConfirmOrder.order_id)} readOnly />
+                </label>
+                <label className="hq-form-field">
+                  <span>明细ID（可选，指定要修改哪一行明细）</span>
+                  <input
+                    placeholder="例如 501"
+                    value={confirmForm.detail_id}
+                    onChange={(e) => setConfirmForm((s) => ({ ...s, detail_id: e.target.value }))}
+                  />
+                </label>
+                <label className="hq-form-field">
+                  <span>实际数量（可选，协商后的数量）</span>
+                  <input
+                    placeholder="例如 30"
+                    value={confirmForm.actual_qty}
+                    onChange={(e) => setConfirmForm((s) => ({ ...s, actual_qty: e.target.value }))}
+                  />
+                </label>
+              </div>
+
+              <div className="hq-modal-actions">
+                <button type="button" onClick={() => void onConfirmTransfer(activeConfirmOrder.order_id)}>
+                  协商后重下发
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -15,6 +15,7 @@ import type {
   LoginReq,
   LoginRes,
   PagedData,
+  PasswordChangeReq,
   SKUCategory,
   SKUCreateReq,
   SKUUpdateReq,
@@ -118,6 +119,9 @@ const mockUsers: User[] = [
     account_name: "store001_mgr",
   },
 ];
+
+let mockHeadPassword = "123456";
+let mockStorePassword = "123456";
 
 const mockSkuCategories: SKUCategory[] = [
   { category_id: 1, category_name: "饮料" },
@@ -241,6 +245,8 @@ const mockTransfers: TransferOrder[] = [
     store_name: "葵涌旗舰店",
     status: "issued_pending_confirmation",
     feedback: null,
+    created_at: "2026-03-14T09:30:00Z",
+    updated_at: "2026-03-14T10:00:00Z",
     details: [
       {
         detail_id: 501,
@@ -259,6 +265,8 @@ const mockTransfers: TransferOrder[] = [
     store_name: "旺角分店",
     status: "in_negotiation",
     feedback: "库容不足，建议可乐调减至30件",
+    created_at: "2026-03-15T08:45:00Z",
+    updated_at: "2026-03-15T11:20:00Z",
     details: [
       {
         detail_id: 502,
@@ -374,7 +382,7 @@ export class AegisMockApi {
   public async login(payload: LoginReq): Promise<ApiResponse<LoginRes | null>> {
     await sleep(120);
 
-    if (payload.account_name === "head001" && payload.password === "123456") {
+    if (payload.account_name === "head001" && payload.password === mockHeadPassword) {
       return {
         code: 0,
         message: "登录成功",
@@ -389,7 +397,7 @@ export class AegisMockApi {
       };
     }
 
-    if (payload.account_name === "store001_mgr" && payload.password === "123456") {
+    if (payload.account_name === "store001_mgr" && payload.password === mockStorePassword) {
       return {
         code: 0,
         message: "登录成功",
@@ -451,6 +459,31 @@ export class AegisMockApi {
       message: "Token 已过期，请重新登录",
       data: null,
     };
+  }
+
+  public async changePassword(
+    token: string,
+    payload: PasswordChangeReq
+  ): Promise<ApiResponse<null>> {
+    await sleep(120);
+
+    if (token === "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.mock_payload.mock_sig") {
+      if (payload.old_password !== mockHeadPassword) {
+        return { code: 1001, message: "旧密码不正确", data: null };
+      }
+      mockHeadPassword = payload.new_password;
+      return ok(null, "密码修改成功");
+    }
+
+    if (token === "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.mock_store_payload.mock_sig") {
+      if (payload.old_password !== mockStorePassword) {
+        return { code: 1001, message: "旧密码不正确", data: null };
+      }
+      mockStorePassword = payload.new_password;
+      return ok(null, "密码修改成功");
+    }
+
+    return { code: 2001, message: "Token 已过期，请重新登录", data: null };
   }
 
   public async getStores(query?: StoresQuery): Promise<ApiResponse<PagedData<Store>>> {
@@ -854,10 +887,7 @@ export class AegisMockApi {
       rows = rows.filter((x) => x.status === query.status);
     }
     if (query?.start_date || query?.end_date) {
-      rows = rows.filter((x) => {
-        const d = String(x.order_id);
-        return inDateRange(`2026-03-${d.slice(-2)}`, query.start_date, query.end_date);
-      });
+      rows = rows.filter((x) => inDateRange(x.created_at, query.start_date, query.end_date));
     }
 
     return ok(toPaged(rows, query?.page ?? 1, query?.limit ?? 10));
@@ -885,6 +915,8 @@ export class AegisMockApi {
       store_name: storeName,
       status: "pending_approval",
       feedback: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
       details,
     };
     mockTransfers.push(row);
@@ -908,7 +940,11 @@ export class AegisMockApi {
         data: null,
       };
     }
-    mockTransfers[idx] = { ...mockTransfers[idx], status: to };
+    mockTransfers[idx] = {
+      ...mockTransfers[idx],
+      status: to,
+      updated_at: new Date().toISOString(),
+    };
     return ok(mockTransfers[idx], message);
   }
 
@@ -966,6 +1002,7 @@ export class AegisMockApi {
       ...mockTransfers[idx],
       status: "in_negotiation",
       feedback: payload.feedback,
+      updated_at: new Date().toISOString(),
     };
     return ok(mockTransfers[idx], "异议已提交，等待总部处理");
   }
@@ -1007,7 +1044,11 @@ export class AegisMockApi {
         data: null,
       };
     }
-    mockTransfers[idx] = { ...mockTransfers[idx], status: "cancelled" };
+    mockTransfers[idx] = {
+      ...mockTransfers[idx],
+      status: "cancelled",
+      updated_at: new Date().toISOString(),
+    };
     return ok(null, "调拨单已作废");
   }
 

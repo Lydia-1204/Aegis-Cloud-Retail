@@ -76,6 +76,17 @@ a {
   cursor: pointer;
 }
 
+.change-password-btn {
+  margin-top: 8px;
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #475569;
+  border-radius: 8px;
+  background: transparent;
+  color: #e2e8f0;
+  cursor: pointer;
+}
+
 .query-bar {
   display: flex;
   gap: 10px;
@@ -88,6 +99,18 @@ a {
 .query-bar button {
   height: 36px;
   padding: 0 10px;
+}
+
+.transfer-date-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.transfer-date-filter span {
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .pager {
@@ -125,6 +148,45 @@ a {
 
 .auth-card button {
   height: 36px;
+}
+
+.password-page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+}
+
+.password-card {
+  width: min(460px, calc(100vw - 32px));
+  background: #ffffff;
+  border-radius: 16px;
+  border: 1px solid #e5e7eb;
+  padding: 24px;
+  box-shadow: 0 14px 40px rgba(15, 23, 42, 0.12);
+}
+
+.password-card h2 {
+  margin: 0;
+}
+
+.password-form {
+  margin-top: 12px;
+  display: grid;
+  gap: 12px;
+}
+
+.password-form label {
+  display: grid;
+  gap: 6px;
+}
+
+.password-form input {
+  height: 40px;
+  padding: 0 12px;
+}
+
+.password-form button {
+  height: 40px;
 }
 
 .hint {
@@ -689,6 +751,46 @@ th {
 .hq-date-field input {
   height: 36px;
   padding: 0 10px;
+}
+
+.hq-sales-query-bar,
+.hq-inventory-query-bar {
+  align-items: flex-end;
+}
+
+.hq-sales-query-bar > select,
+.hq-sales-query-bar > button,
+.hq-inventory-query-bar > select,
+.hq-inventory-query-bar > input,
+.hq-inventory-query-bar > button {
+  height: 40px;
+}
+
+.hq-sales-query-bar > select,
+.hq-inventory-query-bar > select {
+  min-width: 220px;
+}
+
+.hq-sales-query-bar .hq-date-field {
+  min-width: 300px;
+}
+
+.hq-sales-query-bar .hq-date-field input {
+  height: 40px;
+}
+
+.hq-sales-query-bar > button,
+.hq-inventory-query-bar > button {
+  min-width: 140px;
+}
+
+.hq-inventory-query-bar > input {
+  min-width: 280px;
+}
+
+.hq-inventory-query-bar .check-line {
+  min-height: 40px;
+  margin-bottom: 0;
 }
 
 .hq-analytics-kpi-grid {

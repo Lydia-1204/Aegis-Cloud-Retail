@@ -3,6 +3,7 @@ import { RequireAuth, RequireRole } from "./auth/guards";
 import { AppShell } from "./components/AppShell";
 import { LoginPage } from "./pages/LoginPage";
 import {
+  ChangePasswordPage,
   ChatPage,
   InventoryPage,
   SalesPage,
@@ -25,6 +26,7 @@ export function App() {
             <Route path="/store" element={<StoreInfoPage />} />
             <Route path="/inventory" element={<InventoryPage />} />
             <Route path="/transfers" element={<TransfersPage />} />
+            <Route path="/account/password" element={<ChangePasswordPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Route>

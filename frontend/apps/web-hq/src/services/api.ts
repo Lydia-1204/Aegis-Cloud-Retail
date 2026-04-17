@@ -16,6 +16,7 @@ import {
   type PagedData,
   type InventoryItem,
   type InventoryQuery,
+  type PasswordChangeReq,
   type SKUCategory,
   type SKUCreateReq,
   type SKUUpdateReq,
@@ -299,6 +300,36 @@ export async function me(token: string): Promise<UserMe> {
     return unwrapMockEnvelope(res);
   }
   return httpWithToken(token).getOne<UserMe>("foundationData", "/auth/me");
+}
+
+export async function changePassword(payload: PasswordChangeReq): Promise<null> {
+  if (useMock) {
+    const token = readAuthToken();
+    if (!token) {
+      throw new HttpError(401, "缺少 JWT token，无法修改密码");
+    }
+    const res = await mockApi.changePassword(token, payload);
+    return unwrapMockEnvelopeNullable(res);
+  }
+
+  const token = readAuthToken();
+  if (!token) {
+    throw new HttpError(401, "缺少 JWT token，无法修改密码");
+  }
+
+  const res = await fetch(`${DEFAULT_API_BASES.foundationData}/auth/password`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  const payloadRes = (await res.json()) as ApiResponse<null>;
+  if (!res.ok || payloadRes.code !== 0) {
+    throw new HttpError(res.status, payloadRes.message || "请求失败");
+  }
+  return payloadRes.data;
 }
 
 export async function fetchStores(query: StoresQuery): Promise<PagedData<Store>> {

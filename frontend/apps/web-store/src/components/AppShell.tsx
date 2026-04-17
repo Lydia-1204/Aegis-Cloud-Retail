@@ -1,4 +1,5 @@
 import { NavLink, Outlet } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 
 const navItems: Array<{ to: string; label: string }> = [
@@ -12,6 +13,7 @@ const navItems: Array<{ to: string; label: string }> = [
 
 export function AppShell() {
   const { me, signout } = useAuth();
+  const navigate = useNavigate();
 
   return (
     <div className="layout-root">
@@ -35,6 +37,13 @@ export function AppShell() {
         </nav>
         <button className="logout-btn" type="button" onClick={signout}>
           退出登录
+        </button>
+        <button
+          className="change-password-btn"
+          type="button"
+          onClick={() => navigate("/account/password")}
+        >
+          修改密码
         </button>
       </aside>
       <main className="layout-content">

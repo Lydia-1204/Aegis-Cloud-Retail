@@ -9,7 +9,7 @@
 | 项目 | 规范 |
 | --- | --- |
 | Base URL | `http://localhost:8080/api`（开发） / `https://api.aegis.com/api`（生产） |
-| WebSocket | `ws://localhost:8080/ws/dashboard?token=<JWT>` |
+| WebSocket | `ws://localhost:8080/api/ai/traffic/realtime/:store_id?token=<JWT>` |
 | 数据格式 | `application/json` |
 | 时间格式 | ISO 8601，如 `2026-03-14T09:30:00Z` |
 | 分页参数 | `page`（从 1 起）+ `limit`（默认 10），响应含 `total` |
@@ -259,6 +259,61 @@ type UserMeRes struct {
   "code":    2001,
   "message": "Token 已过期，请重新登录",
   "data":    null
+}
+```
+
+---
+
+### `PATCH /api/auth/password` 修改当前登录账户密码（Go-基础数据中心）
+
+**权限：** 已登录用户
+
+**说明：** 该接口仅修改当前 JWT 对应的 `USER.password` 字段，不需要也不允许额外传入 `user_id`。前端可通过校验旧密码与新密码是否一致来做二次确认，但最终提交只需要旧密码和新密码。
+
+**请求头：** `Authorization: Bearer <JWT>`
+
+**请求体：**
+
+```tsx
+export interface PasswordChangeReq {
+  old_password: string;  // 旧密码，必须与当前账户已保存密码匹配
+  new_password: string;  // 新密码，后端更新到 USER.password
+}
+```
+
+```go
+type PasswordChangeReq struct {
+    OldPassword string `json:"old_password" binding:"required"`
+    NewPassword string `json:"new_password" binding:"required,min=6"`
+}
+```
+
+**请求示例：**
+
+```json
+{
+  "old_password": "123456",
+  "new_password": "aegis@2026"
+}
+```
+
+**成功响应：**
+
+```json
+{
+  "code": 0,
+  "message": "密码修改成功",
+  "data": null
+}
+```
+
+**旧密码不正确响应：**
+
+```json
+{
+  "code": 1001,
+  "message": "旧密码不正确",
+  "data": null
 }
 ```
 
@@ -1542,6 +1597,8 @@ export interface TransferOrder {
   store_name:string;    // JOIN STORE 附加
   status:    TransferStatus;
   feedback:  string | null;
+  created_at:string;    // DB: transfer_orders.created_at
+  updated_at:string;    // DB: transfer_orders.updated_at
   details:   TransferDetail[];
 }
 // 列表响应类型：ApiResponse<PagedData<TransferOrder>>
@@ -1563,6 +1620,8 @@ type TransferOrderRes struct {
     StoreName string               `json:"store_name"`
     Status    string               `json:"status"`
     Feedback  *string              `json:"feedback"`
+    CreatedAt string               `json:"created_at"`
+    UpdatedAt string               `json:"updated_at"`
     Details   []TransferDetailRes  `json:"details"`
 }
 ```
@@ -2040,16 +2099,16 @@ JSON
   "code": 0,
   "message": "success",
   "data": {
-    "list": [
+    "page": 1,
+    "limit": 20,
+    "total": 1,
+    "data": [
       {
         "session_id": "sess_998",
         "title": "询问矿泉水销量",
         "session_time": "2026-03-24T10:00:00Z"
       }
-    ],
-    "total": 1,
-    "page": 1,
-    "page_size": 20
+    ]
   }
 }
 ```
@@ -2225,6 +2284,7 @@ export const mockTransferOrders = [
 | --- | --- | --- | --- | --- |
 | **认证** | POST | `/api/auth/login` | 登录获取 JWT | 公开 |
 | **认证** | GET | `/api/auth/me` | 获取当前用户信息 | 已登录 |
+| **认证** | PATCH | `/api/auth/password` | 修改当前登录账户密码 | 已登录 |
 | **门店** | GET | `/api/stores` | 门店列表（分页+搜索） | Head |
 | **门店** | GET | `/api/stores/:store_id` | 门店详情 | Head/Store |
 | **门店** | POST | `/api/stores` | 新增门店 | Head |

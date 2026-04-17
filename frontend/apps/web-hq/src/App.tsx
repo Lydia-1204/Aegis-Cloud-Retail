@@ -11,6 +11,7 @@ import { LoginPage } from "./pages/LoginPage";
 import { ChatPage } from "./pages/ChatPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { GlobalAnalyticsPage } from "./pages/GlobalAnalyticsPage";
+import { ChangePasswordPage } from "./pages/ChangePasswordPage";
 
 export function App() {
   return (
@@ -22,6 +23,7 @@ export function App() {
             <Route path="/" element={<OverviewPage />} />
             <Route path="/chat" element={<ChatPage />} />
             <Route path="/analytics" element={<GlobalAnalyticsPage />} />
+            <Route path="/account/password" element={<ChangePasswordPage />} />
             <Route path="/stores" element={<StoresPage />} />
             <Route path="/skus" element={<SkusPage />} />
             <Route path="/users" element={<UsersPage />} />

@@ -96,6 +96,7 @@ export function GlobalAnalyticsPage() {
   const [inventoryError, setInventoryError] = useState("");
   const [inventoryPage, setInventoryPage] = useState(1);
   const [inventoryLimit] = useState(10);
+  const [hasAutoQueried, setHasAutoQueried] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -253,6 +254,15 @@ export function GlobalAnalyticsPage() {
     }
   }
 
+  useEffect(() => {
+    if (stores.length === 0 || hasAutoQueried) {
+      return;
+    }
+    setHasAutoQueried(true);
+    void onQuerySales();
+    void onQueryInventory();
+  }, [stores, hasAutoQueried]);
+
   const salesMaxPage = Math.max(1, Math.ceil(salesRows.length / salesLimit));
   const inventoryMaxPage = Math.max(1, Math.ceil(inventoryRows.length / inventoryLimit));
 
@@ -263,7 +273,7 @@ export function GlobalAnalyticsPage() {
 
       <article className="op-card">
         <h3>全局销售看板</h3>
-        <div className="query-bar">
+        <div className="query-bar hq-sales-query-bar">
           <select
             value={salesStoreId}
             onChange={(e) => {
@@ -384,7 +394,7 @@ export function GlobalAnalyticsPage() {
 
       <article className="op-card">
         <h3>全局库存大盘</h3>
-        <div className="query-bar">
+        <div className="query-bar hq-inventory-query-bar">
           <select
             value={inventoryStoreId}
             onChange={(e) => {
