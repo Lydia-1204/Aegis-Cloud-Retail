@@ -1,8 +1,22 @@
 import os
-
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
-app = FastAPI(title="ai-assistant", version="0.1.0")
+from ai_assistant.config import database_url
+from ai_assistant.database import init_db, close_db
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    db_url = database_url()
+    if db_url:
+        await init_db(db_url)
+    yield
+    if db_url:
+        await close_db()
+
+
+app = FastAPI(title="ai-assistant", version="0.1.0", lifespan=lifespan)
 
 
 @app.get("/health")
