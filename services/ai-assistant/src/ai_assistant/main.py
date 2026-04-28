@@ -4,6 +4,7 @@ from fastapi import FastAPI
 
 from ai_assistant.config import database_url
 from ai_assistant.database import init_db, close_db
+from ai_assistant.api import chat_router
 
 
 @asynccontextmanager
@@ -17,6 +18,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="ai-assistant", version="0.1.0", lifespan=lifespan)
+
+# 注册路由
+app.include_router(chat_router)
 
 
 @app.get("/health")

@@ -1,64 +1,56 @@
-from datetime import datetime
-from sqlalchemy import BigInteger, Integer, String, Text, JSON, DateTime, SmallInteger, Index
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.sql import func
+
+Base = declarative_base()
 
 
-class Base(DeclarativeBase):
-    pass
-
-
-class AiChatLogs(Base):
+class AIChatLogs(Base):
     __tablename__ = "ai_chat_logs"
-
-    chat_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    store_id: Mapped[int] = mapped_column(Integer, nullable=False)
-    chat_session_id: Mapped[str] = mapped_column(String(128), nullable=False)
-    chat_query: Mapped[str] = mapped_column(Text, nullable=False)
-    context_snapshot: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
-    chat_final_prompt: Mapped[str | None] = mapped_column(Text, nullable=True)
-    ai_response: Mapped[str | None] = mapped_column(Text, nullable=True)
-    chat_tokens_used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    chat_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
-
-    __table_args__ = (
-        Index("ix_ai_chat_logs_store_id", "store_id"),
-        Index("ix_ai_chat_logs_session_id", "chat_session_id"),
-        Index("ix_ai_chat_logs_time", "chat_time"),
-    )
-
-
-class AiAnalysis(Base):
-    __tablename__ = "ai_analysis"
-
-    ai_analysis_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    store_id: Mapped[int] = mapped_column(Integer, nullable=False)
-    sku_id: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    analysis_label: Mapped[str] = mapped_column(String(64), nullable=False)
-    strategy_key: Mapped[str] = mapped_column(String(64), nullable=False)
-    analysis_data: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
-    analysis_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
-
-    __table_args__ = (
-        Index("ix_ai_analysis_store_id", "store_id"),
-        Index("ix_ai_analysis_sku_id", "sku_id"),
-        Index("ix_ai_analysis_strategy_key", "strategy_key"),
-        Index("ix_ai_analysis_time", "analysis_time"),
-    )
+    
+    chat_id = Column(Integer, primary_key=True, autoincrement=True)
+    store_id = Column(Integer, nullable=False)
+    chat_session_id = Column(String(64), nullable=False)
+    chat_query = Column(Text, nullable=False)
+    context_snapshot = Column(JSONB)
+    chat_final_prompt = Column(Text)
+    ai_response = Column(Text)
+    chat_tokens_used = Column(Integer)
+    chat_time = Column(DateTime(timezone=True), server_default=func.now())
+    
+    def to_dict(self):
+        return {
+            "chat_id": self.chat_id,
+            "store_id": self.store_id,
+            "chat_session_id": self.chat_session_id,
+            "chat_query": self.chat_query,
+            "context_snapshot": self.context_snapshot,
+            "chat_final_prompt": self.chat_final_prompt,
+            "ai_response": self.ai_response,
+            "chat_tokens_used": self.chat_tokens_used,
+            "chat_time": self.chat_time.isoformat() if self.chat_time else None
+        }
 
 
-class AiExpertKnowledge(Base):
+class AIExpertKnowledge(Base):
     __tablename__ = "ai_expert_knowledge"
-
-    knowledge_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    strategy_key: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
-    scenario_name: Mapped[str] = mapped_column(Text, nullable=False)
-    expert_prompt: Mapped[str] = mapped_column(Text, nullable=False)
-    is_active: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=1)
-    knowledge_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
-    knowledge_updated_time: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=datetime.utcnow
-    )
-
-    __table_args__ = (
-        Index("ix_ai_expert_knowledge_active", "is_active"),
-    )
+    
+    knowledge_id = Column(Integer, primary_key=True, autoincrement=True)
+    strategy_key = Column(String(100), nullable=False)
+    scenario_name = Column(String(255), nullable=False)
+    expert_prompt = Column(Text, nullable=False)
+    is_active = Column(Boolean, default=True)
+    knowledge_time = Column(DateTime(timezone=True), server_default=func.now())
+    knowledge_updated_time = Column(DateTime(timezone=True), onupdate=func.now())
+    
+    def to_dict(self):
+        return {
+            "knowledge_id": self.knowledge_id,
+            "strategy_key": self.strategy_key,
+            "scenario_name": self.scenario_name,
+            "expert_prompt": self.expert_prompt,
+            "is_active": self.is_active,
+            "knowledge_time": self.knowledge_time.isoformat() if self.knowledge_time else None,
+            "knowledge_updated_time": self.knowledge_updated_time.isoformat() if self.knowledge_updated_time else None
+        }

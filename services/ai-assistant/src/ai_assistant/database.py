@@ -22,3 +22,8 @@ async def close_db():
     global engine
     if engine:
         await engine.dispose()
+
+
+async def create_session() -> AsyncSession:
+    """创建一个独立的数据库会话（用于后台任务）"""
+    return async_session_maker()

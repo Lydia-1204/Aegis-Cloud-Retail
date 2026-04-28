@@ -13,3 +13,11 @@ def _get_default_database_url() -> str:
 
 def database_url() -> str:
     return _get_default_database_url()
+
+
+def deepseek_api_key() -> str:
+    return os.getenv("DEEPSEEK_API_KEY", "").strip()
+
+
+def deepseek_base_url() -> str:
+    return os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com").strip()
