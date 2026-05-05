@@ -1,0 +1,37 @@
+syntax = "proto3";
+package basicdata;
+
+service BasicDataService {
+  rpc GetSkuDictionary (SkuDictRequest) returns (SkuDictResponse);
+  rpc GetStoreContext (StoreContextRequest) returns (StoreContextResponse);
+}
+
+message SkuDictRequest {
+  repeated int32 sku_ids = 1;
+}
+
+message SkuDictResponse {
+  message SkuInfo {
+    int32 sku_id = 1;
+    string sku_code = 2;
+    string sku_name = 3;
+    string category_name = 4;
+    double std_cost = 5;
+    double sug_price = 6;
+    string sku_status = 7;
+  }
+  repeated SkuInfo skus = 1;
+}
+
+message StoreContextRequest {
+  int32 store_id = 1;
+}
+
+message StoreContextResponse {
+  int32 store_id = 1;
+  string store_code = 2;
+  string store_name = 3;
+  string store_location = 4;
+  double store_area = 5;
+  string store_status = 6;
+}

@@ -1,0 +1,32 @@
+syntax = "proto3";
+package ai.perception;
+option go_package = "./pb/perception;perception";
+
+import "google/protobuf/timestamp.proto";
+
+service AiPerceptionService {
+  // 数据分析微服务/Go 调用：跨微服务获取底层客流数据，用于预测第二天销售额或对话 Prompt
+  rpc GetRawCustomerFlow (GetRawFlowRequest) returns (GetRawFlowResponse);
+}
+
+message GetRawFlowRequest {
+  int32 store_id = 1;
+  string start_time = 2;
+  string end_time = 3;
+}
+
+message GetRawFlowResponse {
+  int32 code = 1;
+  string message = 2;
+  
+  message AiCustomerItem {
+    int64 ai_customer_id = 1;
+    int32 store_id = 2;
+    string customer_start_time = 3;
+    string customer_end_time = 4;
+    int32 customer_enter_total = 5;
+    int32 customer_leave_total = 6;
+    string ai_customer_stats_time = 7;
+  }
+  repeated AiCustomerItem flow_list = 3;
+}

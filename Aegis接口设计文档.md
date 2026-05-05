@@ -9,7 +9,7 @@
 | 项目 | 规范 |
 | --- | --- |
 | Base URL | `http://localhost:8080/api`（开发） / `https://api.aegis.com/api`（生产） |
-| WebSocket | `ws://localhost:8080/ws/dashboard?token=<JWT>` |
+| WebSocket | `ws://localhost:8080/api/ai/traffic/realtime/:store_id?token=<JWT>` |
 | 数据格式 | `application/json` |
 | 时间格式 | ISO 8601，如 `2026-03-14T09:30:00Z` |
 | 分页参数 | `page`（从 1 起）+ `limit`（默认 10），响应含 `total` |
@@ -259,6 +259,61 @@ type UserMeRes struct {
   "code":    2001,
   "message": "Token 已过期，请重新登录",
   "data":    null
+}
+```
+
+---
+
+### `PATCH /api/auth/password` 修改当前登录账户密码（Go-基础数据中心）
+
+**权限：** 已登录用户
+
+**说明：** 该接口仅修改当前 JWT 对应的 `USER.password` 字段，不需要也不允许额外传入 `user_id`。前端可通过校验旧密码与新密码是否一致来做二次确认，但最终提交只需要旧密码和新密码。
+
+**请求头：** `Authorization: Bearer <JWT>`
+
+**请求体：**
+
+```tsx
+export interface PasswordChangeReq {
+  old_password: string;  // 旧密码，必须与当前账户已保存密码匹配
+  new_password: string;  // 新密码，后端更新到 USER.password
+}
+```
+
+```go
+type PasswordChangeReq struct {
+    OldPassword string `json:"old_password" binding:"required"`
+    NewPassword string `json:"new_password" binding:"required,min=6"`
+}
+```
+
+**请求示例：**
+
+```json
+{
+  "old_password": "123456",
+  "new_password": "aegis@2026"
+}
+```
+
+**成功响应：**
+
+```json
+{
+  "code": 0,
+  "message": "密码修改成功",
+  "data": null
+}
+```
+
+**旧密码不正确响应：**
+
+```json
+{
+  "code": 1001,
+  "message": "旧密码不正确",
+  "data": null
 }
 ```
 
@@ -1542,6 +1597,8 @@ export interface TransferOrder {
   store_name:string;    // JOIN STORE 附加
   status:    TransferStatus;
   feedback:  string | null;
+  created_at:string;    // DB: transfer_orders.created_at
+  updated_at:string;    // DB: transfer_orders.updated_at
   details:   TransferDetail[];
 }
 // 列表响应类型：ApiResponse<PagedData<TransferOrder>>
@@ -1563,6 +1620,8 @@ type TransferOrderRes struct {
     StoreName string               `json:"store_name"`
     Status    string               `json:"status"`
     Feedback  *string              `json:"feedback"`
+    CreatedAt string               `json:"created_at"`
+    UpdatedAt string               `json:"updated_at"`
     Details   []TransferDetailRes  `json:"details"`
 }
 ```
@@ -1882,877 +1941,257 @@ export interface ConfirmReq {
 
 ## 5. 智能客流感知
 
-### 5.1 视频上传与解析（UC-SENSE-01）
+---
 
-### `POST /api/video/upload` 上传监控视频（multipart/form-data）
+### 5.1 WebSocket 实时客流推送
 
-**权限：** `Store`
+#### **WS** /api/ai/traffic/realtime/:store_id 实时客流推送订阅（Python-云端感知）
 
-**Form Fields：**
+**权限：** Head / Store（后端校验 store_id 归属）
 
-| 字段 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| `store_id` | number | 是 | 门店 ID |
-| `video` | File | 是 | 视频文件（mp4/avi，最大 500MB） |
-| `timestamp` | string | 是 | 视频起始时间，ISO 8601 |
+**Query** **参数：**
 
-**成功响应 `data`：**（异步处理，仅返回任务 ID）
+| 参数  | 类型   | 必填 | 说明                   |
+| ----- | ------ | ---- | ---------------------- |
+| token | string | 是   | JWT Token ?token=<JWT> |
 
-```tsx
-export interface VideoUploadRes {
-  task_id: string;   // 异步任务 ID，用于轮询状态
-  status:  "queued"; // 初始状态固定为 queued
+**连接状态说明 (Handshake)：**  
+
+- **连接成功**：返回 `HTTP 101 Switching Protocols`，连接保持。   
+- **连接失败 (越权/Token无效)**：拒绝连接，返回 `HTTP 401/403`，触发前端 `ws.onerror` / `ws.onclose`。
+
+**服务端下发报文 (遵循全局 WSTrafficUpdate 规范)：**
+
+JSON
+
+```Plain
+{
+  "event": "TRAFFIC_TICK",
+  "store_id": 101,
+  "data": {
+    "current_people_count": 15
+  }
 }
 ```
 
-```json
-{
-  "code": 0,
-  "message": "视频已加入处理队列",
-  "data": {
-    "task_id": "task_20260314_store1_a3f8c2",
-    "status":  "queued"
-  }
+- **前端** **Mock** **模拟脚本 (TypeScript)：**
+
+TypeScript
+
+```Plain
+// 供前端在云端接口未开发完毕时，本地模拟大屏数字跳动使用
+export function mockWebSocketTraffic(storeId: number, callback: (count: number) => void) {
+  let currentCount = 10;
+  
+  const timer = setInterval(() => {
+    // 模拟人数随机上下波动 (-2 到 +3)
+    const delta = Math.floor(Math.random() * 6) - 2; 
+    currentCount = Math.max(0, currentCount + delta); // 保证人数不为负数
+    const mockMessage = {
+      event: "TRAFFIC_TICK",
+      store_id: storeId,
+      data: { current_people_count: currentCount }
+    };
+    
+    // 触发前端回调函数更新 UI
+    callback(mockMessage.data.current_people_count);
+  }, 1000); // 每秒推送一次
+  
+  // 返回清理函数，供组件销毁时调用
+  return () => clearInterval(timer);
 }
 ```
 
 ---
 
-### `GET /api/video/task/:task_id` 查询视频解析任务状态
+## 6. 分析与对话
 
-**权限：** `Store`（自己门店的任务）/ `Head`
+### 6.1 对话
 
-**成功响应 `data`：**
+#### **POST /api/ai/chat/completions 发起 AI 助手对话（Python-云端对话）**
 
-```tsx
-export interface VideoTaskStatus {
-  task_id:    string;
-  store_id:   number;
-  status:     "queued" | "processing" | "completed" | "failed";
-  progress:   number;   // 0-100
-  error_msg:  string | null;
-  created_at: string;
-  finished_at:string | null;
-}
-```
+**权限：** Head / Store
 
-**Mock 响应（处理中）：**
-
-```json
-{
-  "code": 0,
-  "message": "ok",
-  "data": {
-    "task_id":    "task_20260314_store1_a3f8c2",
-    "store_id":   1,
-    "status":     "processing",
-    "progress":   45,
-    "error_msg":  null,
-    "created_at": "2026-03-14T16:00:00Z",
-    "finished_at":null
-  }
-}
-```
-
-**Mock 响应（完成）：**
-
-```json
-{
-  "code": 0,
-  "message": "ok",
-  "data": {
-    "task_id":    "task_20260314_store1_a3f8c2",
-    "store_id":   1,
-    "status":     "completed",
-    "progress":   100,
-    "error_msg":  null,
-    "created_at": "2026-03-14T16:00:00Z",
-    "finished_at":"2026-03-14T16:04:23Z"
-  }
-}
-```
-
----
-
-### 5.2 客流统计查询（CUSTOMER_LOG 表，只读）
-
-### `GET /api/traffic/logs` 查询客流记录
-
-**权限：** `Head` / `Store`（仅自己门店）
-
-> ⚠️ `in_count` 由 AI/YOLO 直写，后端拒绝任何针对此表的 POST/PUT 请求。
-> 
-
-**Query 参数：**
-
-| 参数 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| `store_id` | number | 是 | 门店 ID |
-| `date` | string | 否 | `YYYY-MM-DD`，查询该日所有记录 |
-| `start_time` | string | 否 | ISO 8601 范围查询起始 |
-| `end_time` | string | 否 | ISO 8601 范围查询结束 |
-| `page` | number | 否 | 默认 1 |
-| `limit` | number | 否 | 默认 100 |
-
-**成功响应 `data`：**
-
-```tsx
-export interface TrafficLog {
-  customer_log_id:  number;
-  store_id:         number;
-  record_timestamp: string;   // ISO 8601，CUSTOMER_LOG.record_timestamp
-  in_count:         number;   // 该时间点进店人数，AI 直写，不可修改
-}
-// 响应类型：ApiResponse<PagedData<TrafficLog>>
-```
-
-```go
-type TrafficLogRes struct {
-    CustomerLogId   int    `json:"customer_log_id"`
-    StoreId         int    `json:"store_id"`
-    RecordTimestamp string `json:"record_timestamp"`
-    InCount         int    `json:"in_count"`
-}
-```
-
-**Mock 响应：**
-
-```json
-{
-  "code": 0,
-  "message": "ok",
-  "data": {
-    "page":  1,
-    "limit": 100,
-    "total": 3,
-    "data": [
-      { "customer_log_id": 301, "store_id": 1, "record_timestamp": "2026-03-14T14:00:00Z", "in_count": 45 },
-      { "customer_log_id": 302, "store_id": 1, "record_timestamp": "2026-03-14T15:00:00Z", "in_count": 67 },
-      { "customer_log_id": 303, "store_id": 1, "record_timestamp": "2026-03-14T16:00:00Z", "in_count": 32 }
-    ]
-  }
-}
-```
-
----
-
-### 5.3 门店经营看板（UC-SENSE-03）
-
-<aside>
-💡
-
-这里要分开，实时客流从AI实时客流感知部分获取，其余数据从Go门店经营部分获取
-
-</aside>
-
-### `GET /api/dashboard/store/:store_id` 门店经营实时快照
-
-**权限：** `Head` / 归属门店的 `Store`
-
-**Query 参数：**
-
-| 参数 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| `date` | string | 否 | `YYYY-MM-DD`，默认今日 |
-
-**成功响应 `data`：**
-
-```tsx
-export interface StoreDashboard {
-  store_id:          number;
-  store_name:        string;
-  date:              string;          // YYYY-MM-DD
-
-  // 客流汇总（来自 CUSTOMER_LOG）
-  traffic_summary: {
-    total_in_count:    number;        // 当日累计进店人数（sum of in_count）
-    current_in_store:  number;        // 当前在店估算人数
-    hourly_breakdown:  Array<{
-      hour:     number;               // 0-23
-      in_count: number;
-    }>;
-  };
-
-  // 销售汇总（来自 SALES_DAILY + SALES_DETAIL）
-  sales_summary: {
-    total_orders:    number;
-    total_income:    number;
-    total_profit:    number;
-    conversion_rate: number;          // total_orders / total_in_count，保留4位小数
-  };
-
-  // 低库存预警（来自 INVENTORY，actual_quantity < 安全阈值）
-  low_stock_alerts: Array<{
-    sku_id:          number;
-    sku_name:        string;
-    actual_quantity: number;
-  }>;
-
-  // 待处理调拨单数量
-  pending_transfers_count: number;
-}
-```
-
-**Mock 响应：**
-
-```json
-{
-  "code": 0,
-  "message": "ok",
-  "data": {
-    "store_id":   1,
-    "store_name": "葵涌旗舰店",
-    "date":       "2026-03-14",
-    "traffic_summary": {
-      "total_in_count":   320,
-      "current_in_store": 38,
-      "hourly_breakdown": [
-        { "hour": 9,  "in_count": 12 },
-        { "hour": 10, "in_count": 34 },
-        { "hour": 11, "in_count": 45 },
-        { "hour": 12, "in_count": 67 },
-        { "hour": 13, "in_count": 58 },
-        { "hour": 14, "in_count": 45 },
-        { "hour": 15, "in_count": 32 },
-        { "hour": 16, "in_count": 27 }
-      ]
-    },
-    "sales_summary": {
-      "total_orders":    40,
-      "total_income":    10800.00,
-      "total_profit":    2900.00,
-      "conversion_rate": 0.1250
-    },
-    "low_stock_alerts": [
-      { "sku_id": 101, "sku_name": "可口可乐 330ml", "actual_quantity": 23 },
-      { "sku_id": 103, "sku_name": "矿泉水 500ml",   "actual_quantity": 8  }
-    ],
-    "pending_transfers_count": 1
-  }
-}
-```
-
----
-
-### 5.4 WebSocket 实时客流推送
-
-### `WS /ws/dashboard?token=<JWT>` 建立实时推送长连接
-
-**连接后无需发送订阅消息**，后端根据 JWT 中的 `store_id` 自动推送对应门店数据（`Head` 角色接收所有门店推送）。
-
-**服务端 → 前端推送消息格式：**
-
-```tsx
-// types/websocket.ts
-export type WSMessageType = "traffic_update" | "transfer_notify" | "low_stock_alert";
-
-export interface WSTrafficUpdate {
-  type: "traffic_update";
-  data: {
-    store_id:       number;
-    in_count_delta: number;   // 本次新增进店人数
-    timestamp:      string;   // ISO 8601
-  };
-}
-
-export interface WSTransferNotify {
-  type: "transfer_notify";
-  data: {
-    order_id:  number;
-    store_id:  number;
-    status:    TransferStatus;
-    message:   string;
-  };
-}
-
-export interface WSLowStockAlert {
-  type: "low_stock_alert";
-  data: {
-    store_id:        number;
-    sku_id:          number;
-    sku_name:        string;
-    actual_quantity: number;
-  };
-}
-
-export type WSMessage = WSTrafficUpdate | WSTransferNotify | WSLowStockAlert;
-```
-
-**前端使用示例：**
-
-```tsx
-const ws = new WebSocket(`ws://localhost:8080/ws/dashboard?token=${token}`);
-
-ws.onmessage = (event) => {
-  const msg = JSON.parse(event.data) as WSMessage;
-  switch (msg.type) {
-    case "traffic_update":
-      // 更新 ECharts 客流图
-      console.log(`门店${msg.data.store_id} 新增${msg.data.in_count_delta} 人`);
-      break;
-    case "transfer_notify":
-      // 弹出调拨单通知
-      break;
-    case "low_stock_alert":
-      // 显示低库存警告
-      break;
-  }
-};
-```
-
-**Mock 推送消息示例：**
-
-```json
-// traffic_update
-{
-  "type": "traffic_update",
-  "data": {
-    "store_id":       1,
-    "in_count_delta": 3,
-    "timestamp":      "2026-03-14T17:01:23Z"
-  }
-}
-
-// transfer_notify（门店收到）
-{
-  "type": "transfer_notify",
-  "data": {
-    "order_id": 1003,
-    "store_id": 1,
-    "status":   "issued_pending_confirmation",
-    "message":  "总部已下发调拨单，请及时确认"
-  }
-}
-
-// low_stock_alert
-{
-  "type": "low_stock_alert",
-  "data": {
-    "store_id":        1,
-    "sku_id":          101,
-    "sku_name":        "可口可乐 330ml",
-    "actual_quantity": 8
-  }
-}
-```
-
----
-
-## 6. 全域分析与决策
-
-### 6.1 全域经营看板（总部视图）
-
-### `GET /api/dashboard/global` 全域经营核心指标
-
-**权限：** `Head`
-
-**Query 参数：**
-
-| 参数 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| `date` | string | 否 | `YYYY-MM-DD`，默认今日 |
-| `date_range` | string | 否 | `"week"` | `"month"`，与 `date` 互斥 |
-
-**成功响应 `data`：**
-
-```tsx
-export interface GlobalDashboard {
-  date:       string;
-  date_range: string;
-
-  // 汇总数据
-  summary: {
-    total_revenue:          number;   // sum(SALES_DAILY.total_income)
-    total_profit:           number;   // sum(SALES_DAILY.total_profit)
-    total_orders:           number;
-    total_traffic:          number;   // sum(CUSTOMER_LOG.in_count)
-    avg_conversion_rate:    number;
-    pending_transfer_count: number;   // status=issued_pending_confirmation 的调拨单数
-  };
-
-  // 门店排行（按 total_income 降序）
-  store_ranking: Array<{
-    store_id:        number;
-    store_name:      string;
-    total_income:    number;
-    total_orders:    number;
-    total_traffic:   number;
-    conversion_rate: number;
-    rank:            number;
-  }>;
-
-  // 近7日营收趋势
-  revenue_trend: Array<{
-    date:         string;
-    total_income: number;
-    total_profit: number;
-  }>;
-
-  // 异常门店（来自 AI_STORE_DIAGNOSIS）
-  anomaly_stores: Array<{
-    store_diagnosis_id:        number;
-    store_id:                  number;
-    store_name:                string;
-    store_diagonsis_result_type: string;  // AI_STORE_DIAGNOSIS.store_diagonsis_result_type
-    store_root_cause:          object;    // AI_STORE_DIAGNOSIS.store_root_cause (JSON)
-  }>;
-}
-```
-
-**Mock 响应：**
-
-```json
-{
-  "code": 0,
-  "message": "ok",
-  "data": {
-    "date":       "2026-03-14",
-    "date_range": "day",
-    "summary": {
-      "total_revenue":          89600.00,
-      "total_profit":           23400.00,
-      "total_orders":           1240,
-      "total_traffic":          8900,
-      "avg_conversion_rate":    0.1393,
-      "pending_transfer_count": 3
-    },
-    "store_ranking": [
-      { "store_id": 1, "store_name": "葵涌旗舰店",     "total_income": 38200.00, "total_orders": 540, "total_traffic": 3800, "conversion_rate": 0.1421, "rank": 1 },
-      { "store_id": 2, "store_name": "旺角分店",       "total_income": 31400.00, "total_orders": 430, "total_traffic": 3200, "conversion_rate": 0.1344, "rank": 2 },
-      { "store_id": 3, "store_name": "铜锣湾分店",     "total_income": 20000.00, "total_orders": 270, "total_traffic": 1900, "conversion_rate": 0.1421, "rank": 3 }
-    ],
-    "revenue_trend": [
-      { "date": "2026-03-08", "total_income": 82000.00, "total_profit": 21000.00 },
-      { "date": "2026-03-09", "total_income": 95000.00, "total_profit": 25000.00 },
-      { "date": "2026-03-10", "total_income": 88000.00, "total_profit": 23000.00 },
-      { "date": "2026-03-11", "total_income": 91000.00, "total_profit": 24000.00 },
-      { "date": "2026-03-12", "total_income": 78000.00, "total_profit": 20000.00 },
-      { "date": "2026-03-13", "total_income": 85000.00, "total_profit": 22000.00 },
-      { "date": "2026-03-14", "total_income": 89600.00, "total_profit": 23400.00 }
-    ],
-    "anomaly_stores": [
-      {
-        "store_diagnosis_id":         10,
-        "store_id":                   2,
-        "store_name":                 "旺角分店",
-        "store_diagonsis_result_type":"HighTrafficLowConversion",
-        "store_root_cause":           { "reason": "核心SKU断货", "sku_ids": [101, 103], "suggestion": "立即补货" }
-      }
-    ]
-  }
-}）
-```
-
----
-
-### 6.2 AI 智能供货建议（UC-ANALYSIS-01）
-
-### `GET /api/ai/supply-suggestions` 获取 AI 补货建议（GO-门店经营模块）
-
-读 AI_INVENTORY_DIAGNOSIS表
-
-**权限：** `Head`
-
-**Query 参数：**
-
-| 参数 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| `store_id` | number | 否 | 指定门店，不传则返回全部门店 |
-| `days` | number | 否 | 预测周期（天），默认 7 |
-| `priority` | string | 否 | `"high"` | `"medium"` | `"low"` 过滤 |
-
-**成功响应 `data`：**
-
-```tsx
-export interface SupplySuggestion {
-  // 来自 AI_INVENTORY_DIAGNOSIS 表
-  inventory_diagnosis_id:          number;
-  store_id:                        number;
-  store_name:                      string;   // JOIN STORE
-  sku_id:                          number;
-  sku_name:                        string;   // JOIN SKU
-  sku_code:                        string;
-  inventory_diagonsis_result_type: "Normal" | "Shortage" | "Unsale";
-  inventory_root_cause:            object;   // AI_INVENTORY_DIAGNOSIS.inventory_root_cause
-
-  // 补货建议扩展字段（AI 计算，不存入 ER 表，实时返回）
-  current_stock:    number;         // 当前 INVENTORY.actual_quantity
-  predicted_demand: number;         // AI 预测需求量
-  suggested_qty:    number;         // 建议补货数量
-  priority:         "high" | "medium" | "low";
-  stockout_in_hours:number | null;  // 预计断货剩余小时数，null 表示无断货风险
-}
-// 响应类型：ApiResponse<SupplySuggestion[]>
-```
-
-```go
-type SupplySuggestionRes struct {
-    InventoryDiagnosisId          int             `json:"inventory_diagnosis_id"`
-    StoreId                       int             `json:"store_id"`
-    StoreName                     string          `json:"store_name"`
-    SkuId                         int             `json:"sku_id"`
-    SkuName                       string          `json:"sku_name"`
-    SkuCode                       string          `json:"sku_code"`
-    InventoryDiagonsisResultType  string          `json:"inventory_diagonsis_result_type"`
-    InventoryRootCause            json.RawMessage `json:"inventory_root_cause"`
-    CurrentStock                  int             `json:"current_stock"`
-    PredictedDemand               int             `json:"predicted_demand"`
-    SuggestedQty                  int             `json:"suggested_qty"`
-    Priority                      string          `json:"priority"`
-    StockoutInHours               *int            `json:"stockout_in_hours"`
-}
-```
-
-**Mock 响应：**
-
-```json
-{
-  "code": 0,
-  "message": "ok",
-  "data": [
-    {
-      "inventory_diagnosis_id":          1,
-      "store_id":                        1,
-      "store_name":                      "葵涌旗舰店",
-      "sku_id":                          101,
-      "sku_name":                        "可口可乐 330ml",
-      "sku_code":                        "SKU001",
-      "inventory_diagonsis_result_type": "Shortage",
-      "inventory_root_cause":            { "cause": "近7日销量激增35%，当前库存不足以支撑3天" },
-      "current_stock":                   23,
-      "predicted_demand":                80,
-      "suggested_qty":                   70,
-      "priority":                        "high",
-      "stockout_in_hours":               18
-    },
-    {
-      "inventory_diagnosis_id":          2,
-      "store_id":                        1,
-      "store_name":                      "葵涌旗舰店",
-      "sku_id":                          102,
-      "sku_name":                        "薯片原味 75g",
-      "sku_code":                        "SKU002",
-      "inventory_diagonsis_result_type": "Unsale",
-      "inventory_root_cause":            { "cause": "近14日销量下降60%，建议促销清库" },
-      "current_stock":                   180,
-      "predicted_demand":                20,
-      "suggested_qty":                   0,
-      "priority":                        "low",
-      "stockout_in_hours":               null
-    }
-  ]
-}
-```
-
----
-
-### `POST /api/ai/supply-suggestions/to-transfer` 将 AI 建议转为调拨单
-
-这个我觉得不用单独做一个API，只要创建调拨单的时候显示出来就行了，我的建议是可以直接删掉？
-
-**权限：** `Head`
+**Headers：** `Accept: text/event-stream`, `Content-Type: application/json`
 
 **请求体：**
 
-```tsx
-export interface SuggestionToTransferReq {
-  inventory_diagnosis_id: number;   // 指定哪条建议
-  actual_qty:             number;   // 管理员确认的实际调拨数量
-  transfer_direction:     "H2S" | "S2H";
+TypeScript
+
+```Plain
+export interface ChatCompletionReq {
+  store_id:   number;         
+  session_id: string | null;  // 新对话传 null
+  query:      string;
 }
 ```
 
-```go
-type SuggestionToTransferReq struct {
-    InventoryDiagnosisId int    `json:"inventory_diagnosis_id" binding:"required,gt=0"`
-    ActualQty            int    `json:"actual_qty"             binding:"required,gt=0"`
-    TransferDirection    string `json:"transfer_direction"     binding:"required,oneof=H2S S2H"`
-}
-```
+Python
 
-**成功响应 `data`：** 新建的 `TransferOrder`（`status=pending_approval`，结构同 4.3）
-
-```json
-{
-  "code": 0,
-  "message": "调拨单草稿已创建，请审核后下发",
-  "data": {
-    "order_id":  1004,
-    "store_id":  1,
-    "store_name":"葵涌旗舰店",
-    "status":    "pending_approval",
-    "feedback":  null,
-    "details": [
-      { "detail_id": 701, "order_id": 1004, "sku_id": 101, "sku_name": "可口可乐 330ml", "suggested_qty": 70, "actual_qty": 70, "transfer_direction": "H2S" }
-    ]
-  }
-}
-```
-
----
-
-### 6.3 全域经营异常监测（UC-ANALYSIS-03）
-
-### `GET /api/analysis/store-diagnoses` 获取门店诊断结果列表
-
-这个我记得是不是说过直接删了来着
-
-**权限：** `Head`
-
-**Query 参数：**
-
-| 参数 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| `store_id` | number | 否 | 不传则返回全部 |
-| `result_type` | string | 否 | 精确匹配 `store_diagonsis_result_type` |
-
-**成功响应 `data`：**
-
-```tsx
-export interface StoreDiagnosis {
-  store_diagnosis_id:          number;
-  store_id:                    number;
-  store_name:                  string;    // JOIN STORE
-  store_diagonsis_result_type: string;    // AI_STORE_DIAGNOSIS.store_diagonsis_result_type
-  store_root_cause:            object;    // AI_STORE_DIAGNOSIS.store_root_cause (JSON)
-  // 关联的专家策略（来自 EXPERTS_KNOWLEDGE）
-  expert_strategy:             string | null;  // EXPERTS_KNOWLEDGE.strategy
-}
-```
-
-```go
-type StoreDiagnosisRes struct {
-    StoreDiagnosisId          int             `json:"store_diagnosis_id"`
-    StoreId                   int             `json:"store_id"`
-    StoreName                 string          `json:"store_name"`
-    StoreDiagonsisResultType  string          `json:"store_diagonsis_result_type"`
-    StoreRootCause            json.RawMessage `json:"store_root_cause"`
-    ExpertStrategy            *string         `json:"expert_strategy"`
-}
-```
-
-**Mock 响应：**
-
-```json
-{
-  "code": 0,
-  "message": "ok",
-  "data": [
-    {
-      "store_diagnosis_id":         10,
-      "store_id":                   2,
-      "store_name":                 "旺角分店",
-      "store_diagonsis_result_type":"HighTrafficLowConversion",
-      "store_root_cause":           {
-        "anomaly": "客流高但转化率低于均值30%",
-        "factors": ["核心SKU缺货", "陈列位不合理"],
-        "period":  "2026-03-12 至 2026-03-14"
-      },
-      "expert_strategy": "立即补货核心 SKU，并调整主货架陈列，优先展示高毛利商品"
-    },
-    {
-      "store_diagnosis_id":         11,
-      "store_id":                   3,
-      "store_name":                 "铜锣湾分店",
-      "store_diagonsis_result_type":"Normal",
-      "store_root_cause":           { "summary": "各项指标正常" },
-      "expert_strategy":            null
-    }
-  ]
-}
-```
-
----
-
-### `GET /api/analysis/inventory-diagnoses` 获取库存诊断结果列表
-
-这个我记得也是说删去来着
-
-**权限：** `Head` / `Store`（仅自己门店）
-
-**Query 参数：** `store_id`、`sku_id`、`result_type`（`Normal` / `Shortage` / `Unsale`）
-
-**成功响应 `data`：**
-
-```tsx
-export interface InventoryDiagnosis {
-  inventory_diagnosis_id:          number;
-  store_id:                        number;
-  store_name:                      string;
-  sku_id:                          number;
-  sku_name:                        string;
-  inventory_diagonsis_result_type: "Normal" | "Shortage" | "Unsale";
-  inventory_root_cause:            object;  // JSON
-}
-```
-
-**Mock 响应：**
-
-```json
-{
-  "code": 0,
-  "message": "ok",
-  "data": [
-    {
-      "inventory_diagnosis_id":          1,
-      "store_id":                        1,
-      "store_name":                      "葵涌旗舰店",
-      "sku_id":                          101,
-      "sku_name":                        "可口可乐 330ml",
-      "inventory_diagonsis_result_type": "Shortage",
-      "inventory_root_cause":            { "cause": "销量激增，补货周期内断货风险高" }
-    },
-    {
-      "inventory_diagnosis_id":          2,
-      "store_id":                        1,
-      "store_name":                      "葵涌旗舰店",
-      "sku_id":                          102,
-      "sku_name":                        "薯片原味 75g",
-      "inventory_diagonsis_result_type": "Unsale",
-      "inventory_root_cause":            { "cause": "周转率低于品类均值60%，建议促销处理" }
-    }
-  ]
-}
-```
-
----
-
-### 6.4 AI 督导对话助手（UC-ANALYSIS-04，双路 RAG）
-
-### `POST /api/ai/query` 发起 AI 问答（SSE 流式返回）
-
-**权限：** `Head` / `Store`
-
-**请求 Content-Type：** `application/json`
-
-**响应 Content-Type：** `text/event-stream`
-
-**请求体：**
-
-```tsx
-export interface AIQueryReq {
-  query:             string;   // 用户自然语言问题
-  context_store_id?: number;  // 可选，限定查询范围；店长必填且只能传自己的 store_id
-}
-```
-
-```go
-type AIQueryReq struct {
-    Query           string `json:"query"              binding:"required"`
-    ContextStoreId  *int   `json:"context_store_id"`
-}
+```Plain
+class ChatCompletionReq(BaseModel):
+    store_id:   int    = Field(..., gt=0)
+    session_id: str | None
+    query:      str    = Field(..., min_length=1)
 ```
 
 **请求示例：**
 
-```json
+JSON
+
+```Plain
 {
-  "query":            "昨天葵涌店转化率多少？",
-  "context_store_id": 1
+  "store_id": 101,
+  "session_id": null,
+  "query": "昨天矿泉水销量如何？结合客流数据给我个建议"
 }
 ```
 
-**SSE 事件流规范（后端逐 token 推送）：**
+**响应流 (SSE Event Stream 规范)：**
 
-```tsx
-// 每条 SSE 均为：data: <JSON>\n\n
+Plaintext
 
-// 1. 流式文本 token
-export interface SSEDeltaEvent {
-  type:    "delta";
-  content: string;
-}
-
-// 2. 携带数据引用（AI 引用了哪些数据源）
-export interface SSESourceEvent {
-  type:    "source";
-  sources: Array<{
-    table:  string;    // 数据来源表，如 "SALES_DAILY", "CUSTOMER_LOG"
-    detail: string;
-  }>;
-}
-
-// 3. 推荐快捷跳转
-export interface SSEActionEvent {
-  type:    "action";
-  actions: Array<{
-    label: string;
-    route: string;
-  }>;
-}
-
-// 4. 流结束
-export interface SSEDoneEvent {
-  type: "done";
-}
-
-// 5. 错误（越权或查询失败）
-export interface SSEErrorEvent {
-  type:    "error";
-  message: string;
-}
+```Plain
+data: {"session_id":"sess_998","content":"昨天","is_finish":false}
+data: {"session_id":"sess_998","content":"矿泉水销量为150瓶。","is_finish":false}
+data: {"session_id":"sess_998","content":"","is_finish":true}
 ```
 
-**Go 后端推送示例：**
+#### **GET /api/ai/chat/sessions 获取历史对话菜单（Python-云端对话）**
 
-```go
-c.Header("Content-Type", "text/event-stream")
-c.Header("Cache-Control", "no-cache")
-c.Header("Connection", "keep-alive")
+**权限：** Head / Store
 
-for chunk := range llmStream {
-    payload, _ := json.Marshal(map[string]string{"type": "delta", "content": chunk})
-    fmt.Fprintf(w, "data: %s\n\n", payload)
-    w.(http.Flusher).Flush()
+**Query** **参数：**
+
+| 参数     | 类型   | 必填 | 说明    |
+| -------- | ------ | ---- | ------- |
+| store_id | number | 是   | 门店 ID |
+| limit    | number | 否   | 默认 20 |
+
+**成功响应 data：**
+
+TypeScript
+
+```Plain
+export interface ChatSessionItem {
+  session_id:   string;
+  title:        string;
+  session_time: string; // ISO 8601
 }
-fmt.Fprintf(w, "data: %s\n\n", `{"type":"done"}`)
+// 响应类型：ApiResponse<PagedData<ChatSessionItem>>
 ```
 
-**前端接收示例：**
+Python
 
-```tsx
-const response = await fetch("/api/ai/query", {
-  method:  "POST",
-  headers: {
-    "Content-Type":  "application/json",
-    "Authorization": `Bearer${token}`
-  },
-  body: JSON.stringify({ query: "昨天葵涌店转化率多少？", context_store_id: 1 })
-});
+```Plain
+class ChatSessionItem(BaseModel):
+    session_id:   str
+    title:        str
+    session_time: str
+```
 
-const reader  = response.body!.getReader();
-const decoder = new TextDecoder();
-let   fullAnswer = "";
+**Mock** **响应：**
 
-while (true) {
-  const { done, value } = await reader.read();
-  if (done) break;
-  const text = decoder.decode(value);
-  for (const line of text.split("\n")) {
-    if (!line.startsWith("data: ")) continue;
-    const evt = JSON.parse(line.slice(6));
-    if (evt.type === "delta")  fullAnswer += evt.content;
-    if (evt.type === "action") renderQuickActions(evt.actions);
-    if (evt.type === "done")   break;
-    if (evt.type === "error")  showError(evt.message);
+JSON
+
+```Plain
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "page": 1,
+    "limit": 20,
+    "total": 1,
+    "data": [
+      {
+        "session_id": "sess_998",
+        "title": "询问矿泉水销量",
+        "session_time": "2026-03-24T10:00:00Z"
+      }
+    ]
   }
 }
 ```
 
-**Mock SSE 事件流（完整一次会话）：**
+#### **GET /api/ai/chat/history 获取单次对话详情（Python-云端对话）**
 
+**权限：** Head / Store
+
+**Query** **参数：**
+
+| 参数       | 类型   | 必填 | 说明            |
+| ---------- | ------ | ---- | --------------- |
+| session_id | string | 是   | 关联的会话 UUID |
+
+**成功响应 data：**
+
+TypeScript
+
+```Plain
+export interface ChatMessage {
+  role:      "user" | "assistant";
+  content:   string;
+  chat_time: string;
+}
+
+export interface ChatHistoryRes {
+  session_id: string;
+  store_id:   number;
+  messages:   ChatMessage[];
+}
 ```
-data: {"type":"delta","content":"昨日（2026-03-13）"}
-data: {"type":"delta","content":"葵涌旗舰店"}
-data: {"type":"delta","content":"客流 **298 人**，"}
-data: {"type":"delta","content":"成交订单 **37 单**，"}
-data: {"type":"delta","content":"转化率为 **12.4%**，"}
-data: {"type":"delta","content":"较上周同期（15.2%）下降 **2.8 个百分点**。\n\n"}
-data: {"type":"delta","content":"主要原因：可口可乐 330ml 库存告急（剩余 23 件），"}
-data: {"type":"delta","content":"导致高频购买客流流失。建议立即补货。"}
-data: {"type":"source","sources":[{"table":"CUSTOMER_LOG","detail":"2026-03-13 葵涌店客流记录"},{"table":"SALES_DAILY","detail":"2026-03-13 葵涌店日结"},{"table":"AI_INVENTORY_DIAGNOSIS","detail":"SKU101 缺货诊断"}]}
-data: {"type":"action","actions":[{"label":"查看补货建议","route":"/ai/supply-suggestions?store_id=1"},{"label":"发起调拨","route":"/transfers/create?store_id=1"}]}
-data: {"type":"done"}
+
+Python
+
+```Plain
+class ChatMessage(BaseModel):
+    role:      str
+    content:   str
+    chat_time: str
+    
+class ChatHistoryRes(BaseModel):
+    session_id: str
+    store_id:   int
+    messages:   list[ChatMessage]
+```
+
+**Mock** **响应：**
+
+JSON
+
+```Plain
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "session_id": "sess_998",
+    "store_id": 101,
+    "messages": [
+      {
+        "role": "user",
+        "content": "昨天矿泉水销量如何？",
+        "chat_time": "2026-03-24T10:00:00Z"
+      },
+      {
+        "role": "assistant",
+        "content": "昨天矿泉水销量为 150 瓶。",
+        "chat_time": "2026-03-24T10:00:15Z"
+      }
+    ]
+  }
+}
+```
+
+**失败响应示例 (越权访问他人对话)：**
+
+JSON
+
+```Plain
+{
+  "code": 2002,
+  "message": "越权操作：您无权查看该门店的对话记录",
+  "data": null
+}
 ```
 
 ---
@@ -2845,6 +2284,7 @@ export const mockTransferOrders = [
 | --- | --- | --- | --- | --- |
 | **认证** | POST | `/api/auth/login` | 登录获取 JWT | 公开 |
 | **认证** | GET | `/api/auth/me` | 获取当前用户信息 | 已登录 |
+| **认证** | PATCH | `/api/auth/password` | 修改当前登录账户密码 | 已登录 |
 | **门店** | GET | `/api/stores` | 门店列表（分页+搜索） | Head |
 | **门店** | GET | `/api/stores/:store_id` | 门店详情 | Head/Store |
 | **门店** | POST | `/api/stores` | 新增门店 | Head |
@@ -2872,16 +2312,10 @@ export const mockTransferOrders = [
 | **调拨** | PATCH | `/api/transfers/:order_id/feedback` | 门店异议 | Store |
 | **调拨** | PATCH | `/api/transfers/:order_id/confirm` | 总部协商确认 | Head |
 | **调拨** | PATCH | `/api/transfers/:order_id/cancel` | 作废 | Head |
-| **视频** | POST | `/api/video/upload` | 上传视频 | Store |
-| **视频** | GET | `/api/video/task/:task_id` | 查询解析任务 | Store/Head |
-| **客流** | GET | `/api/traffic/logs` | 客流记录（只读） | Head/Store |
-| **看板** | GET | `/api/dashboard/store/:store_id` | 门店经营快照 | Head/Store |
-| **看板** | GET | `/api/dashboard/global` | 全域经营指标 | Head |
-| **AI分析** | GET | `/api/ai/supply-suggestions` | AI 补货建议 | Head |
-| **AI分析** | POST | `/api/ai/supply-suggestions/to-transfer` | 建议转调拨单 | Head |
-| **AI分析** | GET | `/api/analysis/store-diagnoses` | 门店诊断列表 | Head |
-| **AI分析** | GET | `/api/analysis/inventory-diagnoses` | 库存诊断列表 | Head/Store |
-| **AI助手** | POST | `/api/ai/query` | SSE 对话流 | Head/Store |
-| **WebSocket** | WS | `/ws/dashboard?token=` | 实时推送长连接 | 已登录 |
+| **客流** | WS | `/api/ai/traffic/realtime/:store_id` | 实时客流推送订阅 | Head/Store |
+| **对话** | POST | `/api/ai/chat/completions` | 发起 AI 助手对话 | Head/Store |
+| **对话** | GET | `/api/ai/chat/sessions` | 获取历史对话菜单 | Head/Store |
+| **对话** | GET | `/api/ai/chat/history` | 获取单次对话详情 | Head/Store |
+
 
 ---
