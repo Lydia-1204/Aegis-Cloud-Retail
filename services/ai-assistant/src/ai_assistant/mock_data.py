@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 import json
+import random
 
 
 class MockBusinessData:
@@ -144,3 +145,59 @@ class MockBusinessData:
 {json.dumps(inventory['items'], ensure_ascii=False)}
 """
         return context
+
+    @staticmethod
+    def get_historical_sales(store_id: int, sku_id: int, days: int = 30) -> list:
+        """获取某个门店某个SKU的历史每日销售量时序数据"""
+        base_sales = {
+            (1, 101): {"base": 120, "trend": 1.5, "noise": 10},
+            (1, 102): {"base": 80, "trend": -0.5, "noise": 8},
+            (1, 103): {"base": 150, "trend": 2.0, "noise": 15},
+            (2, 101): {"base": 90, "trend": 0.8, "noise": 7},
+            (2, 103): {"base": 200, "trend": 1.2, "noise": 12},
+        }
+
+        config = base_sales.get((store_id, sku_id), {"base": 50, "trend": 0, "noise": 5})
+
+        random.seed(store_id * 1000 + sku_id)
+
+        result = []
+        today = datetime.now()
+        for i in range(days, 0, -1):
+            date = today - timedelta(days=i)
+            weekday = date.weekday()
+            weekend_factor = 1.3 if weekday >= 5 else 1.0
+            value = (config["base"] + config["trend"] * (days - i)) * weekend_factor
+            value += random.uniform(-config["noise"], config["noise"])
+            value = max(0, round(value, 1))
+
+            result.append({
+                "date": date.strftime("%Y-%m-%d"),
+                "value": value,
+            })
+
+        random.seed()
+        return result
+
+    @staticmethod
+    def get_all_sku_ids(store_id: int) -> list:
+        """获取某个门店的所有SKU列表（含名称和当前库存）"""
+        inventory = MockBusinessData.get_inventory_data(store_id)
+        sales = MockBusinessData.get_sales_data(store_id)
+
+        sku_map = {}
+        for item in inventory.get("items", []):
+            sku_map[item["sku_id"]] = {
+                "sku_id": item["sku_id"],
+                "sku_name": item.get("sku_name", ""),
+                "current_stock": item.get("actual_quantity", 0),
+            }
+        for item in sales.get("details", []):
+            if item["sku_id"] not in sku_map:
+                sku_map[item["sku_id"]] = {
+                    "sku_id": item["sku_id"],
+                    "sku_name": item.get("sku_name", ""),
+                    "current_stock": 0,
+                }
+
+        return list(sku_map.values())

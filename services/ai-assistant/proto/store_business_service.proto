@@ -1,0 +1,75 @@
+syntax = "proto3";
+package storebusiness;
+
+service StoreBusinessService {
+  rpc GetBusinessSnapshot (SnapshotRequest) returns (SnapshotResponse);
+  rpc PushCustomerFlow (PushCustomerFlowRequest) returns (PushCustomerFlowResponse);
+  rpc SyncInventoryDiagnosis (SyncDiagnosisRequest) returns (SyncDiagnosisResponse);
+  rpc CreateAITransferOrder (CreateAiTransferRequest) returns (CreateAiTransferResponse);
+}
+
+message SnapshotRequest {
+  int32 store_id = 1;
+  string start_date = 2;
+  string end_date = 3;
+}
+
+message SnapshotResponse {
+  message InventoryItem {
+    int32 sku_id = 1;
+    int32 actual_quantity = 2;
+  }
+  repeated InventoryItem current_inventory = 1;
+
+  message DailySalesSnapshot {
+    string sales_date = 1;
+    double total_income = 2;
+    int32 total_orders = 3;
+
+    message SkuSalesDetail {
+      int32 sku_id = 1;
+      int32 sku_amount = 2;
+    }
+    repeated SkuSalesDetail details = 4;
+  }
+  repeated DailySalesSnapshot daily_sales_list = 2;
+}
+
+message PushCustomerFlowRequest {
+  int32 store_id = 1;
+  string record_timestamp = 2;
+  string customer_start_time = 3;
+  string customer_end_time = 4;
+  int32 in_count = 5;
+}
+
+message PushCustomerFlowResponse {
+  bool success = 1;
+}
+
+message SyncDiagnosisRequest {
+  int32 store_id = 1;
+  int32 sku_id = 2;
+  string inventory_diagnosis_result_type = 3;
+  string inventory_root_cause = 4;
+}
+
+message SyncDiagnosisResponse {
+  bool success = 1;
+}
+
+message CreateAiTransferRequest {
+  int32 store_id = 1;
+  message TransferDetail {
+    int32 sku_id = 1;
+    int32 suggested_qty = 2;
+    string transfer_direction = 3;
+  }
+  repeated TransferDetail details = 2;
+  string ai_reasoning = 3;
+}
+
+message CreateAiTransferResponse {
+  int32 new_order_id = 1;
+  bool success = 2;
+}

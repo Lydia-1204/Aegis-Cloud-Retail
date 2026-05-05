@@ -174,7 +174,16 @@ async def traffic_history_batch(
         # 模拟 ID
         ai_customer_id = 50000 + request.store_id
     
-    # TODO: 向 Go 核心端发起 gRPC 同步
+    # 向 Go 核心端发起 gRPC 同步
+    from traffic_sense.grpc_client import go_client
+    from datetime import datetime as dt
+    await go_client.push_customer_flow(
+        store_id=request.store_id,
+        record_timestamp=dt.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+        customer_start_time=request.customer_start_time,
+        customer_end_time=request.customer_end_time,
+        in_count=request.customer_enter_total,
+    )
     
     return ApiResponse(
         code=0,

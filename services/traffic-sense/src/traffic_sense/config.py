@@ -13,3 +13,7 @@ def _get_default_database_url() -> str:
 
 def database_url() -> str:
     return _get_default_database_url()
+
+
+def go_store_business_addr() -> str:
+    return os.getenv("GO_STORE_BUSINESS_ADDR", "localhost:50055").strip()

@@ -21,3 +21,11 @@ def deepseek_api_key() -> str:
 
 def deepseek_base_url() -> str:
     return os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com").strip()
+
+
+def go_basic_data_addr() -> str:
+    return os.getenv("GO_BASIC_DATA_ADDR", "localhost:50054").strip()
+
+
+def go_store_business_addr() -> str:
+    return os.getenv("GO_STORE_BUSINESS_ADDR", "localhost:50055").strip()

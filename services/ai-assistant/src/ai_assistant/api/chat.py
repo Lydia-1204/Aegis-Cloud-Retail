@@ -153,8 +153,14 @@ async def chat_completions(
     if req.session_id:
         history = await _get_session_history(db, req.session_id)
 
-    from ai_assistant.mock_data import MockBusinessData
-    context_snapshot = MockBusinessData.get_business_context(req.store_id)
+    from ai_assistant.grpc_client import go_client
+
+    store_ctx = await go_client.get_store_context(req.store_id)
+    snapshot = await go_client.get_business_snapshot(req.store_id)
+    context_snapshot = json.dumps({
+        "store": store_ctx,
+        "snapshot": snapshot,
+    }, ensure_ascii=False, default=str)
 
     final_prompt = await llm_service.get_final_prompt(db, req.store_id, req.query, history)
 

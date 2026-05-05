@@ -1,0 +1,63 @@
+syntax = "proto3";
+package ai.analysis;
+option go_package = "./pb/aianalysis;aianalysis";
+
+service AiAnalysisAndChatService {
+  rpc TriggerDailyAnalysis (TriggerAnalysisRequest) returns (TriggerAnalysisResponse);
+  rpc GetAnalysisReport (GetAnalysisRequest) returns (GetAnalysisResponse);
+  rpc GetSalesForecast (GetSalesForecastRequest) returns (GetSalesForecastResponse);
+}
+
+message TriggerAnalysisRequest {
+  int32 store_id = 1;
+  string target_date = 2;
+}
+
+message TriggerAnalysisResponse {
+  int32 code = 1;
+  string message = 2;
+}
+
+message GetAnalysisRequest {
+  int32 store_id = 1;
+  int32 sku_id = 2;
+}
+
+message GetAnalysisResponse {
+  int32 code = 1;
+  string message = 2;
+
+  message AnalysisItem {
+    int64 ai_analysis_id = 1;
+    string analysis_label = 2;
+    string strategy_key = 3;
+    string analysis_data = 4;
+    string analysis_time = 5;
+  }
+  repeated AnalysisItem reports = 3;
+}
+
+message GetSalesForecastRequest {
+  int32 store_id = 1;
+  int32 sku_id = 2;
+}
+
+message GetSalesForecastResponse {
+  int32 code = 1;
+  string message = 2;
+
+  message ForecastItem {
+    int32 sku_id = 1;
+    string sku_name = 3;
+    string target_date = 4;
+    double predicted_sales = 5;
+    double predicted_lower = 6;
+    double predicted_upper = 7;
+    double trend = 8;
+    string analysis_label = 9;
+    string strategy_key = 10;
+    int32 current_stock = 11;
+    string method = 12;
+  }
+  repeated ForecastItem forecasts = 3;
+}
