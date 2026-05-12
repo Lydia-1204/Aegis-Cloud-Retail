@@ -1,16 +1,15 @@
 import os
-import json
 import asyncio
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
+from fastapi.middleware.cors import CORSMiddleware
 
 from traffic_sense import database
-from traffic_sense.config import database_url
+from traffic_sense.config import cors_allow_origins, database_url
 from traffic_sense.auth import verify_jwt_token
 from traffic_sense.realtime import ConnectionManager, TrafficSimulator
 from traffic_sense.grpc import serve_grpc
-from traffic_sense.database import init_db, close_db, async_session_maker
+from traffic_sense.database import init_db, close_db
 from traffic_sense.models import TrafficSnapshotRequest, TrafficBatchRequest, ApiResponse
 from traffic_sense.db_models import AiCustomer
 
@@ -47,6 +46,15 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="traffic-sense", version="0.1.0", lifespan=lifespan)
 
+_cors_origins = cors_allow_origins()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_credentials="*" not in _cors_origins,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 @app.get("/health")
 def health() -> dict[str, str]:
@@ -64,7 +72,7 @@ async def traffic_realtime(
         await websocket.close(code=4001)
         return
 
-    payload_store_id = payload.get("store_id", 0)
+    payload_store_id = payload.get("store_id", payload.get("sid", 0))
     if payload_store_id != 0 and payload_store_id != store_id:
         await websocket.close(code=4003)
         return
@@ -150,7 +158,7 @@ async def traffic_history_batch(
     
     # 入库
     if database.async_session_maker:
-        from datetime import datetime
+        from datetime import datetime, timezone
         async with database.async_session_maker() as session:
             # 转换时间格式
             start_time = datetime.fromisoformat(request.customer_start_time.replace("Z", "+00:00"))
@@ -163,7 +171,7 @@ async def traffic_history_batch(
                 customer_end_time=end_time,
                 customer_enter_total=request.customer_enter_total,
                 customer_leave_total=request.customer_leave_total,
-                ai_customer_stats_time=datetime.utcnow()
+                ai_customer_stats_time=datetime.now(timezone.utc)
             )
             session.add(customer)
             await session.commit()
@@ -176,10 +184,10 @@ async def traffic_history_batch(
     
     # 向 Go 核心端发起 gRPC 同步
     from traffic_sense.grpc_client import go_client
-    from datetime import datetime as dt
+    from datetime import datetime as dt, timezone
     await go_client.push_customer_flow(
         store_id=request.store_id,
-        record_timestamp=dt.utcnow().strftime("%Y-%m-%d %H:%M:%S"),
+        record_timestamp=dt.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         customer_start_time=request.customer_start_time,
         customer_end_time=request.customer_end_time,
         in_count=request.customer_enter_total,

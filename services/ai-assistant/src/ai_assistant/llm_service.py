@@ -1,5 +1,5 @@
-import os
 import json
+import logging
 from typing import AsyncGenerator, Optional, List, Dict
 from openai import AsyncOpenAI
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,11 +10,20 @@ from ai_assistant.db_models import AIExpertKnowledge
 from ai_assistant.grpc_client import go_client
 
 
+logger = logging.getLogger(__name__)
+
+
 class LLMService:
 
     def __init__(self):
+        api_key = deepseek_api_key()
+        self.client: Optional[AsyncOpenAI] = None
+        if not api_key:
+            logger.warning("LLM API key not configured, using local fallback")
+            return
+
         self.client = AsyncOpenAI(
-            api_key=deepseek_api_key(),
+            api_key=api_key,
             base_url=deepseek_base_url()
         )
 
@@ -102,6 +111,9 @@ class LLMService:
         messages = await self._build_prompt(db, store_id, query, history)
 
         try:
+            if self.client is None:
+                raise RuntimeError("LLM client is not configured")
+
             response = await self.client.chat.completions.create(
                 model="deepseek-v4-pro",
                 messages=messages,
@@ -118,6 +130,9 @@ class LLMService:
         messages = await self._build_prompt(db, store_id, query, history)
 
         try:
+            if self.client is None:
+                raise RuntimeError("LLM client is not configured")
+
             stream = await self.client.chat.completions.create(
                 model="deepseek-v4-pro",
                 messages=messages,
