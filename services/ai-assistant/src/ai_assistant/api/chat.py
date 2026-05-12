@@ -356,3 +356,33 @@ async def delete_chat_log(
         message="删除成功",
         data={"chat_id": chat_id}
     )
+
+
+@router.get("/api/ai/chat/debug-prompt", response_model=ApiResponse)
+async def debug_prompt(
+    store_id: int,
+    query: str,
+    session_id: Optional[str] = None,
+    db: AsyncSession = Depends(get_db)
+):
+    history = []
+    if session_id:
+        history = await _get_session_history(db, session_id)
+
+    from ai_assistant.grpc_client import go_client
+    store_ctx = await go_client.get_store_context(store_id)
+    snapshot = await go_client.get_business_snapshot(store_id)
+    context_snapshot = json.dumps({
+        "store": store_ctx,
+        "snapshot": snapshot,
+    }, ensure_ascii=False, default=str)
+    final_prompt = await llm_service.get_final_prompt(db, store_id, query, history)
+
+    return ApiResponse(
+        code=0,
+        message="success",
+        data={
+            "final_prompt": final_prompt,
+            "context_snapshot": context_snapshot,
+        }
+    )
