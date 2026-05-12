@@ -59,12 +59,14 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("/swagger/openapi.json", s.handleOpenAPI)
 	mux.HandleFunc("/api/auth/login", s.handleLogin)
 	mux.HandleFunc("/api/auth/me", s.auth(s.handleMe))
+	mux.HandleFunc("/api/auth/password", s.auth(s.handlePassword))
 	mux.HandleFunc("/api/stores", s.auth(s.handleStores))
 	mux.HandleFunc("/api/stores/", s.auth(s.handleStoreByID))
 	mux.HandleFunc("/api/skus", s.auth(s.handleSKUs))
 	mux.HandleFunc("/api/skus/", s.auth(s.handleSKUByID))
 	mux.HandleFunc("/api/sku-categories", s.auth(s.handleCategories))
 	mux.HandleFunc("/api/users", s.auth(s.handleUsers))
+	mux.HandleFunc("/api/users/", s.auth(s.handleUserByID))
 	return mux
 }
 
@@ -173,6 +175,10 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request, user authUser)
 }
 
 func (s *Server) handleStores(w http.ResponseWriter, r *http.Request, user authUser) {
+	if r.Method == http.MethodPost {
+		s.handleCreateStore(w, r, user)
+		return
+	}
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, response{Code: 1001, Message: "method not allowed", Data: nil})
 		return
@@ -255,6 +261,14 @@ LIMIT $%d OFFSET $%d`, whereSQL, len(args)-1, len(args))
 }
 
 func (s *Server) handleStoreByID(w http.ResponseWriter, r *http.Request, user authUser) {
+	if r.Method == http.MethodPut {
+		s.handleUpdateStore(w, r, user)
+		return
+	}
+	if r.Method == http.MethodDelete {
+		s.handleDeleteStore(w, r, user)
+		return
+	}
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, response{Code: 1001, Message: "method not allowed", Data: nil})
 		return
@@ -296,7 +310,11 @@ func (s *Server) handleStoreByID(w http.ResponseWriter, r *http.Request, user au
 	})
 }
 
-func (s *Server) handleSKUs(w http.ResponseWriter, r *http.Request, _ authUser) {
+func (s *Server) handleSKUs(w http.ResponseWriter, r *http.Request, user authUser) {
+	if r.Method == http.MethodPost {
+		s.handleCreateSKU(w, r, user)
+		return
+	}
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, response{Code: 1001, Message: "method not allowed", Data: nil})
 		return
@@ -376,7 +394,15 @@ LIMIT $%d OFFSET $%d`, whereSQL, len(args)-1, len(args))
 	})
 }
 
-func (s *Server) handleSKUByID(w http.ResponseWriter, r *http.Request, _ authUser) {
+func (s *Server) handleSKUByID(w http.ResponseWriter, r *http.Request, user authUser) {
+	if r.Method == http.MethodPut {
+		s.handleUpdateSKU(w, r, user)
+		return
+	}
+	if r.Method == http.MethodDelete {
+		s.handleDeleteSKU(w, r, user)
+		return
+	}
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, response{Code: 1001, Message: "method not allowed", Data: nil})
 		return
@@ -447,6 +473,10 @@ func (s *Server) handleCategories(w http.ResponseWriter, r *http.Request, _ auth
 }
 
 func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request, user authUser) {
+	if r.Method == http.MethodPost {
+		s.handleCreateUser(w, r, user)
+		return
+	}
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, response{Code: 1001, Message: "method not allowed", Data: nil})
 		return
