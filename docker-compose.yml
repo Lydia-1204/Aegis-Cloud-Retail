@@ -5,10 +5,11 @@
 services:
   postgres:
     image: postgres:16-alpine
+    env_file: .env
     environment:
-      POSTGRES_USER: aegis
-      POSTGRES_PASSWORD: aegis_dev
-      POSTGRES_DB: aegis_go
+      POSTGRES_USER: ${POSTGRES_USER:-aegis}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aegis_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-aegis_go}
     ports:
       - "5432:5432"
     volumes:
@@ -24,43 +25,46 @@ services:
     build:
       context: .
       dockerfile: services/traffic-sense/Dockerfile
+    env_file: .env
     environment:
-      - ENV=development
-      - PYTHON_DATABASE_URL=postgresql+asyncpg://aegis:aegis_dev@postgres:5432/aegis_python
+      - ENV=${ENV:-production}
+      - PYTHON_DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-aegis}:${POSTGRES_PASSWORD:-aegis_dev}@postgres:5432/aegis_python
+      - GO_STORE_BUSINESS_ADDR=${GO_STORE_BUSINESS_ADDR:-store-ops:50055}
     ports:
       - "8083:8083"
-    volumes:
-      - ./services/traffic-sense:/app  # 挂载代码目录
-    command: ["uvicorn", "traffic_sense.main:app", "--host", "0.0.0.0", "--port", "8083", "--reload"]  # 添加热重载
+      - "50051:50051"
     depends_on:
       postgres:
         condition: service_healthy  # 等待数据库就绪
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8083/health || exit 1"]  # 使用 wget 替代 curl
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8083/health')\" || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 3
 
-  # ai-assistant:
-  #   build:
-  #     context: .
-  #     dockerfile: services/ai-assistant/Dockerfile
-  #   environment:
-  #     - ENV=development
-  #     - PYTHON_DATABASE_URL=postgresql+asyncpg://aegis:aegis_dev@postgres:5432/aegis_python
-  #   ports:
-  #     - "8084:8084"
-  #   volumes:
-  #     - ./services/ai-assistant:/app  # 挂载代码目录
-  #   command: ["uvicorn", "ai_assistant.main:app", "--host", "0.0.0.0", "--port", "8084", "--reload"]  # 添加热重载
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy  # 等待数据库就绪
-  #   healthcheck:
-  #     test: ["CMD-SHELL", "wget -qO- http://localhost:8084/health || exit 1"]  # 使用 wget 替代 curl
-  #     interval: 10s
-  #     timeout: 5s
-  #     retries: 3
+  ai-assistant:
+    build:
+      context: .
+      dockerfile: services/ai-assistant/Dockerfile
+    env_file: .env
+    environment:
+      - ENV=${ENV:-production}
+      - PYTHON_DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-aegis}:${POSTGRES_PASSWORD:-aegis_dev}@postgres:5432/aegis_python
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      - GO_BASIC_DATA_ADDR=${GO_BASIC_DATA_ADDR:-basic-data-center:50054}
+      - GO_STORE_BUSINESS_ADDR=${GO_STORE_BUSINESS_ADDR:-store-ops:50055}
+    ports:
+      - "8084:8084"
+      - "50053:50053"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8084/health')\" || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
 volumes:
   aegis_pg_data:

@@ -1,6 +1,12 @@
 import os
 
 
+def _split_addrs(raw: str, default: str) -> list[str]:
+    value = raw.strip() if raw else default
+    addrs = [item.strip() for item in value.split(",") if item.strip()]
+    return addrs or [default]
+
+
 def _get_default_database_url() -> str:
     env = os.getenv("ENV", "development")
     if env == "production":
@@ -24,8 +30,34 @@ def deepseek_base_url() -> str:
 
 
 def go_basic_data_addr() -> str:
-    return os.getenv("GO_BASIC_DATA_ADDR", "localhost:50054").strip()
+    return go_basic_data_addrs()[0]
 
 
 def go_store_business_addr() -> str:
-    return os.getenv("GO_STORE_BUSINESS_ADDR", "localhost:50055").strip()
+    return go_store_business_addrs()[0]
+
+
+def go_basic_data_addrs() -> list[str]:
+    return _split_addrs(
+        os.getenv("GO_BASIC_DATA_ADDRS") or os.getenv("GO_BASIC_DATA_ADDR", ""),
+        "localhost:50054",
+    )
+
+
+def go_store_business_addrs() -> list[str]:
+    return _split_addrs(
+        os.getenv("GO_STORE_BUSINESS_ADDRS") or os.getenv("GO_STORE_BUSINESS_ADDR", ""),
+        "localhost:50055",
+    )
+
+
+def cors_allow_origins() -> list[str]:
+    raw = os.getenv("CORS_ALLOW_ORIGINS", "").strip()
+    if raw:
+        return [item.strip() for item in raw.split(",") if item.strip()]
+    return [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+    ]

@@ -1,8 +1,7 @@
 import uuid
 import json
-from datetime import datetime
 from typing import Optional, List, Dict
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -115,7 +114,7 @@ async def _get_session_history(db: AsyncSession, session_id: str) -> List[Dict]:
 async def _save_chat_log_async(store_id: int, session_id: str,
                                query: str, context_snapshot: str,
                                final_prompt: str, response: str):
-    """异步保存对话日志（用于后台任务）"""
+    """保存对话日志。SSE 完结前落库，避免前端立即查 history 时发生竞态。"""
     from ai_assistant.database import create_session
     db = await create_session()
     try:
@@ -144,7 +143,6 @@ async def _save_chat_log_async(store_id: int, session_id: str,
 @router.post("/api/ai/chat/completions")
 async def chat_completions(
     req: ChatCompletionReq,
-    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db)
 ):
     session_id = req.session_id if req.session_id else f"sess_{uuid.uuid4().hex[:8]}"
@@ -169,8 +167,7 @@ async def chat_completions(
     async for chunk in llm_service.chat_completion_stream(db, req.store_id, req.query, history):
         full_response += chunk
 
-    background_tasks.add_task(
-        _save_chat_log_async,
+    await _save_chat_log_async(
         req.store_id,
         session_id,
         req.query,
@@ -355,4 +352,34 @@ async def delete_chat_log(
         code=0,
         message="删除成功",
         data={"chat_id": chat_id}
+    )
+
+
+@router.get("/api/ai/chat/debug-prompt", response_model=ApiResponse)
+async def debug_prompt(
+    store_id: int,
+    query: str,
+    session_id: Optional[str] = None,
+    db: AsyncSession = Depends(get_db)
+):
+    history = []
+    if session_id:
+        history = await _get_session_history(db, session_id)
+
+    from ai_assistant.grpc_client import go_client
+    store_ctx = await go_client.get_store_context(store_id)
+    snapshot = await go_client.get_business_snapshot(store_id)
+    context_snapshot = json.dumps({
+        "store": store_ctx,
+        "snapshot": snapshot,
+    }, ensure_ascii=False, default=str)
+    final_prompt = await llm_service.get_final_prompt(db, store_id, query, history)
+
+    return ApiResponse(
+        code=0,
+        message="success",
+        data={
+            "final_prompt": final_prompt,
+            "context_snapshot": context_snapshot,
+        }
     )

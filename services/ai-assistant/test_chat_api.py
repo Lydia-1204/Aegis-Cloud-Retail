@@ -34,12 +34,48 @@ class ChatAPITester:
         print("\n" + "=" * 60)
         print("测试 2: 发起对话（流式响应）")
         print("=" * 60)
-        
+
         payload = {
             "store_id": 1,
             "query": "分析一下门店的销售情况"
         }
-        
+
+        # ── 1. 先拉取完整提示词并打印 ──
+        try:
+            debug_resp = self.session.get(
+                f"{self.base_url}/api/ai/chat/debug-prompt",
+                params={"store_id": 1, "query": payload["query"]},
+                timeout=10
+            )
+            if debug_resp.status_code == 200:
+                debug_data = debug_resp.json()
+                final_prompt = debug_data.get("data", {}).get("final_prompt", "")
+                print("\n" + "=" * 60)
+                print("【完整提示词】")
+                print("=" * 60)
+                if final_prompt:
+                    messages = eval(final_prompt) if isinstance(final_prompt, str) else final_prompt
+                    for i, msg in enumerate(messages):
+                        role = msg.get("role", "")
+                        content = msg.get("content", "")
+                        if role == "system":
+                            print(f"\n[system] ({len(content)} 字符):")
+                            print("─" * 40)
+                            print(content[:1500])
+                            if len(content) > 1500:
+                                print(f"  ... [内容过长，已截断，完整长度 {len(content)} 字符]")
+                        else:
+                            print(f"\n[{role}] ({len(content)} 字符):")
+                            print("─" * 40)
+                            print(content)
+                else:
+                    print("(未获取到提示词)")
+                print("\n" + "=" * 60)
+        except Exception as e:
+            print(f"⚠️  获取提示词失败: {e}")
+
+        # ── 2. 发起对话 ──
+        print("【发起对话请求】")
         try:
             response = self.session.post(
                 f"{self.base_url}/api/ai/chat/completions",
@@ -47,11 +83,14 @@ class ChatAPITester:
                 stream=True,
                 timeout=60
             )
-            
+
             if response.status_code == 200:
                 full_response = ""
                 session_id = None
-                
+
+                print("\n【流式回答】:")
+                print("─" * 40)
+
                 for line in response.iter_lines():
                     if line:
                         line = line.decode('utf-8')
@@ -60,26 +99,27 @@ class ChatAPITester:
                                 data = json.loads(line[5:])
                                 session_id = data.get('session_id', session_id)
                                 if data.get('content'):
+                                    print(data['content'], end="", flush=True)
                                     full_response += data['content']
                             except json.JSONDecodeError:
                                 pass
-                
-                print(f"\n会话 ID: {session_id}")
-                print(f"响应长度: {len(full_response)} 字符")
-                
+
+                print("\n" + "─" * 40)
+                print(f"【会话 ID】: {session_id}")
+                print(f"【回答长度】: {len(full_response)} 字符")
+
                 if "由于API调用问题" in full_response:
                     print("⚠️  返回了降级的 mock 数据（API Key 未配置或无效）")
                 else:
                     print("✅ 对话接口测试通过")
-                
+
                 return session_id, True
             else:
                 print(f"❌ 请求失败: {response.status_code}")
                 return None, False
-                
+
         except requests.exceptions.RequestException as e:
             if "ended prematurely" in str(e):
-                # 流式响应正常结束
                 print("✅ 对话接口测试通过（流式响应正常结束）")
                 return session_id, True
             else:

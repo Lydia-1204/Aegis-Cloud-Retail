@@ -2,8 +2,9 @@ import os
 import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
-from ai_assistant.config import database_url
+from ai_assistant.config import cors_allow_origins, database_url
 from ai_assistant.database import init_db, close_db
 from ai_assistant.api import chat_router
 from ai_assistant.grpc_service import serve_grpc
@@ -30,6 +31,15 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="ai-assistant", version="0.1.0", lifespan=lifespan)
+
+_cors_origins = cors_allow_origins()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_credentials="*" not in _cors_origins,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.include_router(chat_router)
 
