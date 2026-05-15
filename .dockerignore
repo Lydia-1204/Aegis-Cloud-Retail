@@ -6,6 +6,7 @@ __pycache__
 .env
 node_modules
 *.md
+!services/traffic-sense/README.md
 test_*
 .ruff_cache
 .venv
