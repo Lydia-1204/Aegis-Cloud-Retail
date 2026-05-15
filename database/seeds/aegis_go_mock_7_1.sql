@@ -114,6 +114,76 @@ ON CONFLICT (inventory_id) DO UPDATE SET
 SELECT setval(pg_get_serial_sequence('inventories', 'inventory_id'), (SELECT MAX(inventory_id) FROM inventories), true);
 
 -- ---------------------------------------------------------------------------
+-- Sales daily + details mock data.
+-- Dates are relative to CURRENT_DATE so the AI/business default 30-day
+-- snapshot window contains real Go-side sales data.
+-- ---------------------------------------------------------------------------
+WITH seed_sales AS (
+  SELECT *
+  FROM (VALUES
+    (1::bigint, CURRENT_DATE - 13, 18, 24, 58),
+    (1::bigint, CURRENT_DATE - 12, 20, 25, 63),
+    (1::bigint, CURRENT_DATE - 11, 19, 22, 60),
+    (1::bigint, CURRENT_DATE - 10, 22, 27, 65),
+    (1::bigint, CURRENT_DATE -  9, 24, 28, 70),
+    (1::bigint, CURRENT_DATE -  8, 31, 31, 86),
+    (1::bigint, CURRENT_DATE -  7, 35, 33, 92),
+    (1::bigint, CURRENT_DATE -  6, 21, 23, 61),
+    (1::bigint, CURRENT_DATE -  5, 23, 24, 66),
+    (1::bigint, CURRENT_DATE -  4, 25, 29, 72),
+    (1::bigint, CURRENT_DATE -  3, 27, 30, 74),
+    (1::bigint, CURRENT_DATE -  2, 34, 32, 88),
+    (1::bigint, CURRENT_DATE -  1, 38, 36, 95),
+    (1::bigint, CURRENT_DATE,      28, 26, 69),
+    (2::bigint, CURRENT_DATE -  6, 12, 18, 40),
+    (2::bigint, CURRENT_DATE -  5, 14, 19, 42),
+    (2::bigint, CURRENT_DATE -  4, 13, 17, 39),
+    (2::bigint, CURRENT_DATE -  3, 16, 22, 45),
+    (2::bigint, CURRENT_DATE -  2, 18, 24, 51),
+    (2::bigint, CURRENT_DATE -  1, 21, 27, 55),
+    (2::bigint, CURRENT_DATE,      15, 20, 44)
+  ) AS v(store_id, sales_date, qty_101, qty_102, qty_103)
+), upserted_daily AS (
+  INSERT INTO sales_daily (store_id, sales_date, total_orders, total_income, total_profit)
+  SELECT
+    store_id,
+    sales_date,
+    GREATEST(1, round(((qty_101 + qty_102 + qty_103)::numeric / 3.2))::integer) AS total_orders,
+    (qty_101 * 5.00 + qty_102 * 8.50 + qty_103 * 2.00) AS total_income,
+    (qty_101 * 2.50 + qty_102 * 4.50 + qty_103 * 1.20) AS total_profit
+  FROM seed_sales
+  ON CONFLICT (store_id, sales_date) DO UPDATE SET
+    total_orders = EXCLUDED.total_orders,
+    total_income = EXCLUDED.total_income,
+    total_profit = EXCLUDED.total_profit,
+    updated_at = now()
+  RETURNING sales_id, store_id, sales_date
+), deleted_details AS (
+  DELETE FROM sales_details sd
+  USING upserted_daily ud
+  WHERE sd.sales_id = ud.sales_id
+  RETURNING sd.detail_id
+), delete_done AS (
+  SELECT count(*) AS deleted_count FROM deleted_details
+), detail_rows AS (
+  SELECT store_id, sales_date, 101::bigint AS sku_id, qty_101 AS sku_amount, qty_101 * 5.00 AS sku_income, qty_101 * 2.50 AS sku_profit FROM seed_sales
+  UNION ALL
+  SELECT store_id, sales_date, 102::bigint AS sku_id, qty_102 AS sku_amount, qty_102 * 8.50 AS sku_income, qty_102 * 4.50 AS sku_profit FROM seed_sales
+  UNION ALL
+  SELECT store_id, sales_date, 103::bigint AS sku_id, qty_103 AS sku_amount, qty_103 * 2.00 AS sku_income, qty_103 * 1.20 AS sku_profit FROM seed_sales
+)
+INSERT INTO sales_details (sales_id, sku_id, sku_amount, sku_income, sku_profit)
+SELECT ud.sales_id, dr.sku_id, dr.sku_amount, dr.sku_income, dr.sku_profit
+FROM detail_rows dr
+JOIN upserted_daily ud ON ud.store_id = dr.store_id AND ud.sales_date = dr.sales_date
+CROSS JOIN delete_done
+WHERE dr.sku_amount > 0
+ORDER BY ud.sales_id, dr.sku_id;
+
+SELECT setval(pg_get_serial_sequence('sales_daily', 'sales_id'), (SELECT COALESCE(MAX(sales_id), 1) FROM sales_daily), true);
+SELECT setval(pg_get_serial_sequence('sales_details', 'detail_id'), (SELECT COALESCE(MAX(detail_id), 1) FROM sales_details), true);
+
+-- ---------------------------------------------------------------------------
 -- 客流 mockTrafficLogs（文档时间 2026-03-14 UTC）
 -- ---------------------------------------------------------------------------
 INSERT INTO customer_logs (customer_log_id, store_id, record_timestamp, in_count)

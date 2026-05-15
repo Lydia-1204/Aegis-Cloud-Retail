@@ -1,11 +1,19 @@
-# 本地联调：一个 Postgres 进程内两个库 ——
-#   aegis_go：foundation-data + store-ops 共用
-#   aegis_python：traffic-sense + ai-assistant 共用
-# 首次初始化时由 database/docker-init 创建第二套库。
+# Local backend stack:
+#   aegis_go: foundation-data + store-ops
+#   aegis_python: traffic-sense + ai-assistant
+#
+# Start the whole backend stack:
+#   docker compose up -d --build
+#
+# Set SEED_DEMO_DATA=false for production-like deployments that should not import demo data.
+
+x-go-db-url: &go-db-url postgres://${POSTGRES_USER:-aegis}:${POSTGRES_PASSWORD:-aegis_dev}@postgres:5432/${POSTGRES_DB:-aegis_go}?sslmode=disable
+x-python-db-url: &python-db-url postgresql+asyncpg://${POSTGRES_USER:-aegis}:${POSTGRES_PASSWORD:-aegis_dev}@postgres:5432/aegis_python
+x-jwt-secret: &jwt-secret ${FOUNDATION_DATA_JWT_SECRET:-foundation-data-dev-secret}
+
 services:
   postgres:
     image: postgres:16-alpine
-    env_file: .env
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-aegis}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aegis_dev}
@@ -16,55 +24,166 @@ services:
       - aegis_pg_data:/var/lib/postgresql/data
       - ./database/docker-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U aegis -d aegis_go"]
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+
+  db-migrate-go:
+    image: migrate/migrate:v4.18.3
+    volumes:
+      - ./database/migrations/go:/migrations:ro
+    command:
+      - "-path"
+      - "/migrations"
+      - "-database"
+      - *go-db-url
+      - "up"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  db-migrate-python:
+    image: migrate/migrate:v4.18.3
+    volumes:
+      - ./database/migrations/python:/migrations:ro
+    command:
+      - "-path"
+      - "/migrations"
+      - "-database"
+      - "postgres://${POSTGRES_USER:-aegis}:${POSTGRES_PASSWORD:-aegis_dev}@postgres:5432/aegis_python?sslmode=disable"
+      - "up"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  db-seed:
+    image: postgres:16-alpine
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: ${POSTGRES_USER:-aegis}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-aegis_dev}
+      GO_DB: ${POSTGRES_DB:-aegis_go}
+      PYTHON_DB: aegis_python
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
+    volumes:
+      - ./database/seeds:/seeds:ro
+      - ./docker/db-seed.sh:/docker/db-seed.sh:ro
+    command: ["sh", "/docker/db-seed.sh"]
+    depends_on:
+      db-migrate-go:
+        condition: service_completed_successfully
+      db-migrate-python:
+        condition: service_completed_successfully
+    restart: "no"
+
+  foundation-data:
+    build:
+      context: .
+      dockerfile: services/foundation-data/Dockerfile
+    environment:
+      GO_DATABASE_URL: *go-db-url
+      DATABASE_URL: *go-db-url
+      FOUNDATION_DATA_HTTP_ADDR: ":8081"
+      FOUNDATION_DATA_GRPC_ADDR: ":50054"
+      FOUNDATION_DATA_JWT_SECRET: *jwt-secret
+    ports:
+      - "8081:8081"
+      - "50054:50054"
+    depends_on:
+      db-seed:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:8081/health >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    restart: unless-stopped
+
+  store-ops:
+    build:
+      context: .
+      dockerfile: services/store-ops/Dockerfile
+    environment:
+      GO_DATABASE_URL: *go-db-url
+      DATABASE_URL: *go-db-url
+      STORE_OPS_HTTP_ADDR: ":8082"
+      STORE_OPS_GRPC_ADDR: ":50055"
+      FOUNDATION_DATA_JWT_SECRET: *jwt-secret
+      JWT_SECRET: *jwt-secret
+    ports:
+      - "8082:8082"
+      - "50055:50055"
+    depends_on:
+      db-seed:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:8082/health >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+    restart: unless-stopped
 
   traffic-sense:
     build:
       context: .
       dockerfile: services/traffic-sense/Dockerfile
-    env_file: .env
     environment:
-      - ENV=${ENV:-production}
-      - PYTHON_DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-aegis}:${POSTGRES_PASSWORD:-aegis_dev}@postgres:5432/aegis_python
-      - GO_STORE_BUSINESS_ADDR=${GO_STORE_BUSINESS_ADDR:-store-ops:50055}
+      ENV: ${ENV:-production}
+      PYTHON_DATABASE_URL: *python-db-url
+      FOUNDATION_DATA_JWT_SECRET: *jwt-secret
+      JWT_SECRET: *jwt-secret
+      GO_STORE_BUSINESS_ADDRS: store-ops:50055
+      GO_STORE_BUSINESS_ADDR: store-ops:50055
+      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174}
     ports:
       - "8083:8083"
       - "50051:50051"
     depends_on:
-      postgres:
-        condition: service_healthy  # 等待数据库就绪
+      db-seed:
+        condition: service_completed_successfully
+      store-ops:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8083/health')\" || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 6
+    restart: unless-stopped
 
   ai-assistant:
     build:
       context: .
       dockerfile: services/ai-assistant/Dockerfile
-    env_file: .env
     environment:
-      - ENV=${ENV:-production}
-      - PYTHON_DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-aegis}:${POSTGRES_PASSWORD:-aegis_dev}@postgres:5432/aegis_python
-      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
-      - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
-      - GO_BASIC_DATA_ADDR=${GO_BASIC_DATA_ADDR:-basic-data-center:50054}
-      - GO_STORE_BUSINESS_ADDR=${GO_STORE_BUSINESS_ADDR:-store-ops:50055}
+      ENV: ${ENV:-production}
+      PYTHON_DATABASE_URL: *python-db-url
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      GO_BASIC_DATA_ADDRS: foundation-data:50054
+      GO_STORE_BUSINESS_ADDRS: store-ops:50055
+      GO_BASIC_DATA_ADDR: foundation-data:50054
+      GO_STORE_BUSINESS_ADDR: store-ops:50055
+      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174}
     ports:
       - "8084:8084"
       - "50053:50053"
     depends_on:
-      postgres:
+      db-seed:
+        condition: service_completed_successfully
+      foundation-data:
+        condition: service_healthy
+      store-ops:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8084/health')\" || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 6
+    restart: unless-stopped
 
 volumes:
   aegis_pg_data:
