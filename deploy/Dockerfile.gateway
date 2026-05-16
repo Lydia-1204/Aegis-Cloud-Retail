@@ -1,0 +1,12 @@
+FROM python:3.10-slim
+
+WORKDIR /app
+ENV PYTHONUNBUFFERED=1
+
+RUN pip install --no-cache-dir fastapi "uvicorn[standard]" httpx websockets
+
+COPY integration_gateway.py ./integration_gateway.py
+
+EXPOSE 8080
+
+CMD ["uvicorn", "integration_gateway:app", "--host", "0.0.0.0", "--port", "8080"]

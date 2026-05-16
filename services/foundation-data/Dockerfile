@@ -1,7 +1,6 @@
-# build: docker build -t aegis-foundation-data -f services/foundation-data/Dockerfile .
-FROM alpine:3.20 AS build
-RUN apk add --no-cache ca-certificates git go
-ENV GOTOOLCHAIN=go1.25.10+auto
+FROM golang:1.25-alpine AS build
+RUN apk add --no-cache ca-certificates git
+ENV GOPROXY=https://goproxy.cn,direct
 WORKDIR /src
 COPY services/foundation-data/go.mod ./
 COPY services/foundation-data/go.sum ./

@@ -20,11 +20,13 @@ export interface ApiBases {
   aiAssistant: string;
 }
 
+const DEFAULT_API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "/api").replace(/\/$/, "");
+
 export const DEFAULT_API_BASES: ApiBases = {
-  foundationData: "http://localhost:8080/api",
-  storeOps: "http://localhost:8080/api",
-  trafficSense: "http://localhost:8080/api",
-  aiAssistant: "http://localhost:8080/api",
+  foundationData: DEFAULT_API_BASE,
+  storeOps: DEFAULT_API_BASE,
+  trafficSense: DEFAULT_API_BASE,
+  aiAssistant: DEFAULT_API_BASE,
 };
 
 export interface TrafficTickData {
