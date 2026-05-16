@@ -19,10 +19,11 @@ export function ChatPage() {
   const stopStreamRef = useRef<(() => void) | null>(null);
 
   async function loadSessions() {
-    if (!me?.store_id) {
+    const storeId = me?.store_id;
+    if (storeId == null) {
       return;
     }
-    const res = await fetchChatSessions({ store_id: me.store_id, limit: 20 });
+    const res = await fetchChatSessions({ store_id: storeId, limit: 20 });
     setSessions(res.data);
     if (!activeSessionId && res.data.length > 0) {
       setActiveSessionId(res.data[0].session_id);
@@ -54,11 +55,12 @@ export function ChatPage() {
 
   function onSend() {
     const text = query.trim();
+    const storeId = me?.store_id;
     if (!text) {
       setError("请输入对话内容");
       return;
     }
-    if (!me?.store_id) {
+    if (storeId == null) {
       setError("未获取到门店编号");
       return;
     }
@@ -79,7 +81,7 @@ export function ChatPage() {
 
     stopStreamRef.current = streamChatCompletions(
       {
-        store_id: me.store_id,
+        store_id: storeId,
         session_id: activeSessionId,
         query: text,
       },

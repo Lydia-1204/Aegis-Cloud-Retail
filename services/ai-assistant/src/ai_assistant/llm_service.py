@@ -63,7 +63,7 @@ class LLMService:
 
     async def _build_business_context(self, store_id: int) -> str:
         store_ctx = await go_client.get_store_context(store_id)
-        snapshot = await go_client.get_business_snapshot(store_id)
+        snapshot = None if store_id == 0 else await go_client.get_business_snapshot(store_id)
 
         parts = []
         sku_map = {}
@@ -75,6 +75,14 @@ class LLMService:
 - 门店位置：{store_ctx.get('store_location', '')}
 - 门店面积：{store_ctx.get('store_area', 0)}平方米
 - 营业状态：{store_ctx.get('store_status', '')}""")
+
+        if store_id == 0:
+            parts.append(
+                "总部上下文说明：\n"
+                "- 当前账号对应总部虚拟门店 store_id=0，不绑定具体门店。\n"
+                "- 当前上下文不包含单店销售、库存或客流快照。\n"
+                "- 可以回答总部管理、系统使用、经营策略等通用问题；如果用户询问具体门店数据，请提示需要提供具体门店编号或切换到门店端。"
+            )
 
         if snapshot:
             inventory = snapshot.get("current_inventory", [])

@@ -155,6 +155,25 @@ export function streamChatCompletions(
       const decoder = new TextDecoder("utf-8");
       let buffer = "";
 
+      function handleSseLine(line: string): boolean {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("data:")) {
+          return true;
+        }
+        const raw = trimmed.slice("data:".length).trim();
+        if (!raw) {
+          return true;
+        }
+        try {
+          const chunk = JSON.parse(raw) as ChatCompletionChunk;
+          handlers.onChunk(chunk);
+          return true;
+        } catch {
+          handlers.onError?.("AI 对话流消息解析失败");
+          return false;
+        }
+      }
+
       while (true) {
         const { value, done } = await reader.read();
         if (done) {
@@ -166,22 +185,14 @@ export function streamChatCompletions(
         buffer = lines.pop() ?? "";
 
         for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed.startsWith("data:")) {
-            continue;
-          }
-          const raw = trimmed.slice("data:".length).trim();
-          if (!raw) {
-            continue;
-          }
-          try {
-            const chunk = JSON.parse(raw) as ChatCompletionChunk;
-            handlers.onChunk(chunk);
-          } catch {
-            handlers.onError?.("AI 对话流消息解析失败");
+          if (!handleSseLine(line)) {
             return;
           }
         }
+      }
+
+      if (buffer.trim() && !handleSseLine(buffer)) {
+        return;
       }
     } catch {
       if (!controller.signal.aborted) {
