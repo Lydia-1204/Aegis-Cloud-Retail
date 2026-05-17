@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { formatBeijingDateTime } from "@aegis/shared";
 import type { SKU, SKUCategory, Store, TransferOrder, User } from "@aegis/shared";
 import {
   cancelTransfer,
@@ -1115,17 +1116,6 @@ export function TransfersPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  function formatTransferDate(raw: string): string {
-    if (!raw) {
-      return "-";
-    }
-    const t = new Date(raw);
-    if (Number.isNaN(t.getTime())) {
-      return raw;
-    }
-    return t.toLocaleString("zh-CN", { hour12: false });
-  }
-
   async function loadTransfers(targetPage = page) {
     const res = await fetchTransfers({
       page: targetPage,
@@ -1347,8 +1337,8 @@ export function TransfersPage() {
                   <td>{x.order_id}</td>
                   <td>{x.store_name}</td>
                   <td>{TRANSFER_STATUS_LABELS[x.status]}</td>
-                  <td>{formatTransferDate(x.created_at)}</td>
-                  <td>{formatTransferDate(x.updated_at)}</td>
+                  <td>{formatBeijingDateTime(x.created_at)}</td>
+                  <td>{formatBeijingDateTime(x.updated_at)}</td>
                   <td>{x.details.length}</td>
                   <td>
                     <div className="row-action">

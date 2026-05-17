@@ -209,6 +209,86 @@ func (x *StoreContextResponse) GetStoreStatus() string {
 	return ""
 }
 
+type ListStoresRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	StoreStatus string `protobuf:"bytes,1,opt,name=store_status,json=storeStatus,proto3" json:"store_status,omitempty"`
+}
+
+func (x *ListStoresRequest) Reset() {
+	*x = ListStoresRequest{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_basic_data_service_proto_msgTypes[4]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *ListStoresRequest) String() string { return protoimpl.X.MessageStringOf(x) }
+func (*ListStoresRequest) ProtoMessage()    {}
+func (x *ListStoresRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_basic_data_service_proto_msgTypes[4]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+func (*ListStoresRequest) Descriptor() ([]byte, []int) {
+	return file_basic_data_service_proto_rawDescGZIP(), []int{4}
+}
+func (x *ListStoresRequest) GetStoreStatus() string {
+	if x != nil {
+		return x.StoreStatus
+	}
+	return ""
+}
+
+type ListStoresResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Stores []*StoreContextResponse `protobuf:"bytes,1,rep,name=stores,proto3" json:"stores,omitempty"`
+}
+
+func (x *ListStoresResponse) Reset() {
+	*x = ListStoresResponse{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_basic_data_service_proto_msgTypes[5]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *ListStoresResponse) String() string { return protoimpl.X.MessageStringOf(x) }
+func (*ListStoresResponse) ProtoMessage()    {}
+func (x *ListStoresResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_basic_data_service_proto_msgTypes[5]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+func (*ListStoresResponse) Descriptor() ([]byte, []int) {
+	return file_basic_data_service_proto_rawDescGZIP(), []int{5}
+}
+func (x *ListStoresResponse) GetStores() []*StoreContextResponse {
+	if x != nil {
+		return x.Stores
+	}
+	return nil
+}
+
 type SkuDictResponse_SkuInfo struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -226,7 +306,7 @@ type SkuDictResponse_SkuInfo struct {
 func (x *SkuDictResponse_SkuInfo) Reset() {
 	*x = SkuDictResponse_SkuInfo{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_basic_data_service_proto_msgTypes[4]
+		mi := &file_basic_data_service_proto_msgTypes[6]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -235,7 +315,7 @@ func (x *SkuDictResponse_SkuInfo) Reset() {
 func (x *SkuDictResponse_SkuInfo) String() string { return protoimpl.X.MessageStringOf(x) }
 func (*SkuDictResponse_SkuInfo) ProtoMessage()    {}
 func (x *SkuDictResponse_SkuInfo) ProtoReflect() protoreflect.Message {
-	mi := &file_basic_data_service_proto_msgTypes[4]
+	mi := &file_basic_data_service_proto_msgTypes[6]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -293,7 +373,7 @@ func (x *SkuDictResponse_SkuInfo) GetSkuStatus() string {
 
 var File_basic_data_service_proto protoreflect.FileDescriptor
 
-var file_basic_data_service_proto_rawDesc = []byte("\n\x18basic_data_service.proto\x12\tbasicdata\"!\n\x0eSkuDictRequest\x12\x0f\n\x07sku_ids\x18\x01 \x03(\x05\"\xd3\x01\n\x0fSkuDictResponse\x12\x30\n\x04skus\x18\x01 \x03(\x0b\x32\".basicdata.SkuDictResponse.SkuInfo\x1a\x8d\x01\n\x07SkuInfo\x12\x0e\n\x06sku_id\x18\x01 \x01(\x05\x12\x10\n\x08sku_code\x18\x02 \x01(\t\x12\x10\n\x08sku_name\x18\x03 \x01(\t\x12\x15\n\rcategory_name\x18\x04 \x01(\t\x12\x10\n\x08std_cost\x18\x05 \x01(\x01\x12\x11\n\tsug_price\x18\x06 \x01(\x01\x12\x12\n\nsku_status\x18\x07 \x01(\t\"'\n\x13StoreContextRequest\x12\x10\n\x08store_id\x18\x01 \x01(\x05\"\x92\x01\n\x14StoreContextResponse\x12\x10\n\x08store_id\x18\x01 \x01(\x05\x12\x12\n\nstore_code\x18\x02 \x01(\t\x12\x12\n\nstore_name\x18\x03 \x01(\t\x12\x16\n\x0estore_location\x18\x04 \x01(\t\x12\x12\n\nstore_area\x18\x05 \x01(\x01\x12\x14\n\x0cstore_status\x18\x06 \x01(\t2\xb1\x01\n\x10BasicDataService\x12I\n\x10GetSkuDictionary\x12\x19.basicdata.SkuDictRequest\x1a\x1a.basicdata.SkuDictResponse\x12R\n\x0fGetStoreContext\x12\x1e.basicdata.StoreContextRequest\x1a\x1f.basicdata.StoreContextResponseb\x06proto3")
+var file_basic_data_service_proto_rawDesc = []byte("\n\x18basic_data_service.proto\x12\tbasicdata\"!\n\x0eSkuDictRequest\x12\x0f\n\x07sku_ids\x18\x01 \x03(\x05\"\xd3\x01\n\x0fSkuDictResponse\x120\n\x04skus\x18\x01 \x03(\x0b2\".basicdata.SkuDictResponse.SkuInfo\x1a\x8d\x01\n\x07SkuInfo\x12\x0e\n\x06sku_id\x18\x01 \x01(\x05\x12\x10\n\x08sku_code\x18\x02 \x01(\t\x12\x10\n\x08sku_name\x18\x03 \x01(\t\x12\x15\n\rcategory_name\x18\x04 \x01(\t\x12\x10\n\x08std_cost\x18\x05 \x01(\x01\x12\x11\n\tsug_price\x18\x06 \x01(\x01\x12\x12\n\nsku_status\x18\x07 \x01(\t\"'\n\x13StoreContextRequest\x12\x10\n\x08store_id\x18\x01 \x01(\x05\"\x92\x01\n\x14StoreContextResponse\x12\x10\n\x08store_id\x18\x01 \x01(\x05\x12\x12\n\nstore_code\x18\x02 \x01(\t\x12\x12\n\nstore_name\x18\x03 \x01(\t\x12\x16\n\x0estore_location\x18\x04 \x01(\t\x12\x12\n\nstore_area\x18\x05 \x01(\x01\x12\x14\n\x0cstore_status\x18\x06 \x01(\t\")\n\x11ListStoresRequest\x12\x14\n\x0cstore_status\x18\x01 \x01(\t\"E\n\x12ListStoresResponse\x12/\n\x06stores\x18\x01 \x03(\x0b2\x1f.basicdata.StoreContextResponse2\xfc\x01\n\x10BasicDataService\x12I\n\x10GetSkuDictionary\x12\x19.basicdata.SkuDictRequest\x1a\x1a.basicdata.SkuDictResponse\x12R\n\x0fGetStoreContext\x12\x1e.basicdata.StoreContextRequest\x1a\x1f.basicdata.StoreContextResponse\x12I\n\nListStores\x12\x1c.basicdata.ListStoresRequest\x1a\x1d.basicdata.ListStoresResponseb\x06proto3")
 
 var (
 	file_basic_data_service_proto_rawDescOnce sync.Once
@@ -307,25 +387,30 @@ func file_basic_data_service_proto_rawDescGZIP() []byte {
 	return file_basic_data_service_proto_rawDescData
 }
 
-var file_basic_data_service_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_basic_data_service_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_basic_data_service_proto_goTypes = []interface{}{
 	(*SkuDictRequest)(nil),
 	(*SkuDictResponse)(nil),
 	(*StoreContextRequest)(nil),
 	(*StoreContextResponse)(nil),
+	(*ListStoresRequest)(nil),
+	(*ListStoresResponse)(nil),
 	(*SkuDictResponse_SkuInfo)(nil),
 }
 var file_basic_data_service_proto_depIdxs = []int32{
-	4, // 0: basicdata.SkuDictResponse.skus:type_name -> basicdata.SkuDictResponse.SkuInfo
+	6, // 0: basicdata.SkuDictResponse.skus:type_name -> basicdata.SkuDictResponse.SkuInfo
+	3, // 1: basicdata.ListStoresResponse.stores:type_name -> basicdata.StoreContextResponse
 	0, // 1: basicdata.BasicDataService.GetSkuDictionary:input_type -> basicdata.SkuDictRequest
 	2, // 2: basicdata.BasicDataService.GetStoreContext:input_type -> basicdata.StoreContextRequest
-	1, // 3: basicdata.BasicDataService.GetSkuDictionary:output_type -> basicdata.SkuDictResponse
-	3, // 4: basicdata.BasicDataService.GetStoreContext:output_type -> basicdata.StoreContextResponse
-	3, // [3:5] is the sub-list for method output_type
-	1, // [1:3] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	4, // 3: basicdata.BasicDataService.ListStores:input_type -> basicdata.ListStoresRequest
+	1, // 4: basicdata.BasicDataService.GetSkuDictionary:output_type -> basicdata.SkuDictResponse
+	3, // 5: basicdata.BasicDataService.GetStoreContext:output_type -> basicdata.StoreContextResponse
+	5, // 6: basicdata.BasicDataService.ListStores:output_type -> basicdata.ListStoresResponse
+	5, // [5:8] is the sub-list for method output_type
+	2, // [2:5] is the sub-list for method input_type
+	2, // [2:2] is the sub-list for extension type_name
+	2, // [2:2] is the sub-list for extension extendee
+	0, // [0:2] is the sub-list for field type_name
 }
 
 func init() { file_basic_data_service_proto_init() }
@@ -383,6 +468,30 @@ func file_basic_data_service_proto_init() {
 			}
 		}
 		file_basic_data_service_proto_msgTypes[4].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*ListStoresRequest); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_basic_data_service_proto_msgTypes[5].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*ListStoresResponse); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_basic_data_service_proto_msgTypes[6].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*SkuDictResponse_SkuInfo); i {
 			case 0:
 				return &v.state
@@ -401,7 +510,7 @@ func file_basic_data_service_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_basic_data_service_proto_rawDesc,
 			NumEnums:      0,
-			NumMessages:   5,
+			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

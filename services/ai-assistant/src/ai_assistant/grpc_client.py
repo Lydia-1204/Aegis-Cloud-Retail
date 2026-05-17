@@ -6,6 +6,7 @@ import grpc
 
 from ai_assistant.config import go_basic_data_addrs, go_store_business_addrs
 from ai_assistant.proto.basic_data_service_pb2 import (
+    ListStoresRequest,
     SkuDictRequest,
     StoreContextRequest,
 )
@@ -108,6 +109,29 @@ class GoServiceClient:
 
         logger.warning("All BasicDataService gRPC addresses failed; using local store mock data")
         return self._mock_store_context(store_id)
+
+    async def list_stores(self, store_status: str = "active") -> List[Dict]:
+        for addr, stub in self._get_basic_data_stubs():
+            try:
+                request = ListStoresRequest(store_status=store_status)
+                response = stub.ListStores(request, timeout=10)
+                return [
+                    {
+                        "store_id": s.store_id,
+                        "store_code": s.store_code,
+                        "store_name": s.store_name,
+                        "store_location": s.store_location,
+                        "store_area": s.store_area,
+                        "store_status": s.store_status,
+                    }
+                    for s in response.stores
+                    if s.store_id > 0
+                ]
+            except grpc.RpcError as e:
+                self._log_rpc_error("ListStores", addr, e)
+
+        logger.warning("All BasicDataService gRPC addresses failed; using local store list mock data")
+        return self._mock_store_list(store_status)
 
     async def get_business_snapshot(
         self, store_id: int, start_date: str = None, end_date: str = None
@@ -228,6 +252,16 @@ class GoServiceClient:
             2: {"store_id": 2, "store_code": "S002", "store_name": "旺角分店", "store_location": "香港九龙旺角西洋菜南街88号", "store_area": 98.5, "store_status": "open"},
         }
         return stores.get(store_id, {"store_id": store_id, "store_code": "", "store_name": "", "store_location": "", "store_area": 0.0, "store_status": "unknown"})
+
+    def _mock_store_list(self, store_status: str = "active") -> List[Dict]:
+        stores = [self._mock_store_context(1), self._mock_store_context(2)]
+        if store_status and store_status != "all":
+            return [
+                store
+                for store in stores
+                if store.get("store_status") in {store_status, "open"}
+            ]
+        return stores
 
     def _mock_business_snapshot(self, store_id: int) -> Dict:
         from ai_assistant.mock_data import MockBusinessData

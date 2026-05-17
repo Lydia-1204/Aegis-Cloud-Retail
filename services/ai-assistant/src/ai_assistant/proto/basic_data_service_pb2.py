@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x18\x62\x61sic_data_service.proto\x12\tbasicdata\"!\n\x0eSkuDictRequest\x12\x0f\n\x07sku_ids\x18\x01 \x03(\x05\"\xd3\x01\n\x0fSkuDictResponse\x12\x30\n\x04skus\x18\x01 \x03(\x0b\x32\".basicdata.SkuDictResponse.SkuInfo\x1a\x8d\x01\n\x07SkuInfo\x12\x0e\n\x06sku_id\x18\x01 \x01(\x05\x12\x10\n\x08sku_code\x18\x02 \x01(\t\x12\x10\n\x08sku_name\x18\x03 \x01(\t\x12\x15\n\rcategory_name\x18\x04 \x01(\t\x12\x10\n\x08std_cost\x18\x05 \x01(\x01\x12\x11\n\tsug_price\x18\x06 \x01(\x01\x12\x12\n\nsku_status\x18\x07 \x01(\t\"\'\n\x13StoreContextRequest\x12\x10\n\x08store_id\x18\x01 \x01(\x05\"\x92\x01\n\x14StoreContextResponse\x12\x10\n\x08store_id\x18\x01 \x01(\x05\x12\x12\n\nstore_code\x18\x02 \x01(\t\x12\x12\n\nstore_name\x18\x03 \x01(\t\x12\x16\n\x0estore_location\x18\x04 \x01(\t\x12\x12\n\nstore_area\x18\x05 \x01(\x01\x12\x14\n\x0cstore_status\x18\x06 \x01(\t2\xb1\x01\n\x10\x42\x61sicDataService\x12I\n\x10GetSkuDictionary\x12\x19.basicdata.SkuDictRequest\x1a\x1a.basicdata.SkuDictResponse\x12R\n\x0fGetStoreContext\x12\x1e.basicdata.StoreContextRequest\x1a\x1f.basicdata.StoreContextResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x18\x62\x61sic_data_service.proto\x12\tbasicdata\"!\n\x0eSkuDictRequest\x12\x0f\n\x07sku_ids\x18\x01 \x03(\x05\"\xd3\x01\n\x0fSkuDictResponse\x12\x30\n\x04skus\x18\x01 \x03(\x0b\x32\".basicdata.SkuDictResponse.SkuInfo\x1a\x8d\x01\n\x07SkuInfo\x12\x0e\n\x06sku_id\x18\x01 \x01(\x05\x12\x10\n\x08sku_code\x18\x02 \x01(\t\x12\x10\n\x08sku_name\x18\x03 \x01(\t\x12\x15\n\rcategory_name\x18\x04 \x01(\t\x12\x10\n\x08std_cost\x18\x05 \x01(\x01\x12\x11\n\tsug_price\x18\x06 \x01(\x01\x12\x12\n\nsku_status\x18\x07 \x01(\t\"\'\n\x13StoreContextRequest\x12\x10\n\x08store_id\x18\x01 \x01(\x05\"\x92\x01\n\x14StoreContextResponse\x12\x10\n\x08store_id\x18\x01 \x01(\x05\x12\x12\n\nstore_code\x18\x02 \x01(\t\x12\x12\n\nstore_name\x18\x03 \x01(\t\x12\x16\n\x0estore_location\x18\x04 \x01(\t\x12\x12\n\nstore_area\x18\x05 \x01(\x01\x12\x14\n\x0cstore_status\x18\x06 \x01(\t\")\n\x11ListStoresRequest\x12\x14\n\x0cstore_status\x18\x01 \x01(\t\"E\n\x12ListStoresResponse\x12/\n\x06stores\x18\x01 \x03(\x0b\x32\x1f.basicdata.StoreContextResponse2\xfc\x01\n\x10\x42\x61sicDataService\x12I\n\x10GetSkuDictionary\x12\x19.basicdata.SkuDictRequest\x1a\x1a.basicdata.SkuDictResponse\x12R\n\x0fGetStoreContext\x12\x1e.basicdata.StoreContextRequest\x1a\x1f.basicdata.StoreContextResponse\x12I\n\nListStores\x12\x1c.basicdata.ListStoresRequest\x1a\x1d.basicdata.ListStoresResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -41,6 +41,10 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_STORECONTEXTREQUEST']._serialized_end=327
   _globals['_STORECONTEXTRESPONSE']._serialized_start=330
   _globals['_STORECONTEXTRESPONSE']._serialized_end=476
-  _globals['_BASICDATASERVICE']._serialized_start=479
-  _globals['_BASICDATASERVICE']._serialized_end=656
+  _globals['_LISTSTORESREQUEST']._serialized_start=478
+  _globals['_LISTSTORESREQUEST']._serialized_end=519
+  _globals['_LISTSTORESRESPONSE']._serialized_start=521
+  _globals['_LISTSTORESRESPONSE']._serialized_end=590
+  _globals['_BASICDATASERVICE']._serialized_start=593
+  _globals['_BASICDATASERVICE']._serialized_end=845
 # @@protoc_insertion_point(module_scope)

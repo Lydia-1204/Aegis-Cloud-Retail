@@ -142,18 +142,8 @@ async def _save_chat_log_async(store_id: int, session_id: str,
         await db.close()
 
 
-async def _build_context_snapshot(store_id: int) -> str:
-    from ai_assistant.grpc_client import go_client
-
-    store_ctx = await go_client.get_store_context(store_id)
-    snapshot = None
-    if store_id > 0:
-        snapshot = await go_client.get_business_snapshot(store_id)
-
-    return json.dumps({
-        "store": store_ctx,
-        "snapshot": snapshot,
-    }, ensure_ascii=False, default=str)
+async def _build_context_snapshot(store_id: int) -> Dict:
+    return await llm_service.build_context_snapshot(store_id)
 
 
 def _sse_chat_event(item: ChatCompletionRes) -> str:
@@ -175,13 +165,26 @@ async def chat_completions(
     if req.session_id:
         history = await _get_session_history(db, req.session_id)
 
-    context_snapshot = await _build_context_snapshot(req.store_id)
-    final_prompt = await llm_service.get_final_prompt(db, req.store_id, req.query, history)
+    context_snapshot_data = await _build_context_snapshot(req.store_id)
+    context_snapshot = json.dumps(context_snapshot_data, ensure_ascii=False, default=str)
+    final_prompt = await llm_service.get_final_prompt(
+        db,
+        req.store_id,
+        req.query,
+        history,
+        context_snapshot_data,
+    )
 
     async def generate_response():
         full_response = ""
 
-        async for chunk in llm_service.chat_completion_stream(db, req.store_id, req.query, history):
+        async for chunk in llm_service.chat_completion_stream(
+            db,
+            req.store_id,
+            req.query,
+            history,
+            context_snapshot_data,
+        ):
             if not chunk:
                 continue
             full_response += chunk
@@ -389,8 +392,15 @@ async def debug_prompt(
     if session_id:
         history = await _get_session_history(db, session_id)
 
-    context_snapshot = await _build_context_snapshot(store_id)
-    final_prompt = await llm_service.get_final_prompt(db, store_id, query, history)
+    context_snapshot_data = await _build_context_snapshot(store_id)
+    context_snapshot = json.dumps(context_snapshot_data, ensure_ascii=False, default=str)
+    final_prompt = await llm_service.get_final_prompt(
+        db,
+        store_id,
+        query,
+        history,
+        context_snapshot_data,
+    )
 
     return ApiResponse(
         code=0,
