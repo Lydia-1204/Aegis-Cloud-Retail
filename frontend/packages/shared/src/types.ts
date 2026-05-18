@@ -33,11 +33,19 @@ export interface TrafficTickData {
   current_people_count: number;
 }
 
-export interface WSTrafficUpdate {
+export interface WSTrafficTickUpdate {
   event: "TRAFFIC_TICK";
   store_id: number;
   data: TrafficTickData;
 }
+
+export interface WSTrafficNoDataUpdate {
+  event: "TRAFFIC_NO_DATA";
+  store_id: number;
+  data: null;
+}
+
+export type WSTrafficUpdate = WSTrafficTickUpdate | WSTrafficNoDataUpdate;
 
 export interface ChatCompletionReq {
   store_id: number;

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { formatBeijingDateTime } from "@aegis/shared";
 import type { ChatMessage, ChatSessionItem } from "@aegis/shared";
 import { useAuth } from "../auth/AuthContext";
 import { fetchChatHistory, fetchChatSessions, streamChatCompletions } from "../services/api";
@@ -128,7 +129,7 @@ export function ChatPage() {
           <p className="hint">
             当前会话：
             {activeSession
-              ? `${activeSession.title}（${activeSession.session_time}）`
+              ? `${activeSession.title}（${formatBeijingDateTime(activeSession.session_time)}）`
               : "新会话（未选择历史会话）"}
           </p>
         </div>
@@ -144,7 +145,7 @@ export function ChatPage() {
             >
               <header>
                 <strong>{msg.role === "user" ? "你" : "助手"}</strong>
-                <span>{msg.chat_time}</span>
+                <span>{formatBeijingDateTime(msg.chat_time)}</span>
               </header>
               <p>{msg.content}</p>
             </article>
@@ -190,7 +191,7 @@ export function ChatPage() {
               onClick={() => setActiveSessionId(item.session_id)}
             >
               <strong>{item.title}</strong>
-              <span>{item.session_time}</span>
+              <span>{formatBeijingDateTime(item.session_time)}</span>
             </button>
           ))}
         </div>

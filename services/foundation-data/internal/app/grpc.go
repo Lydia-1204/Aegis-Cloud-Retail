@@ -91,3 +91,50 @@ WHERE store_id = $1`
 	}
 	return &resp, nil
 }
+
+func (s *BasicDataGRPCServer) ListStores(ctx context.Context, req *pb.ListStoresRequest) (*pb.ListStoresResponse, error) {
+	storeStatus := strings.TrimSpace(req.GetStoreStatus())
+	if storeStatus == "" {
+		storeStatus = "active"
+	}
+	if storeStatus != "active" && storeStatus != "inactive" && storeStatus != "all" {
+		return nil, status.Error(codes.InvalidArgument, "store_status must be active, inactive, or all")
+	}
+
+	whereSQL := "store_id > 0"
+	args := []interface{}{}
+	if storeStatus != "all" {
+		args = append(args, storeStatus)
+		whereSQL += " AND store_status = $1"
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+SELECT store_id, store_code, store_name, store_location, store_area, store_status
+FROM stores
+WHERE `+whereSQL+`
+ORDER BY store_id`, args...)
+	if err != nil {
+		return nil, status.Error(codes.Internal, "query stores failed")
+	}
+	defer rows.Close()
+
+	resp := &pb.ListStoresResponse{Stores: []*pb.StoreContextResponse{}}
+	for rows.Next() {
+		var store pb.StoreContextResponse
+		if err := rows.Scan(
+			&store.StoreId,
+			&store.StoreCode,
+			&store.StoreName,
+			&store.StoreLocation,
+			&store.StoreArea,
+			&store.StoreStatus,
+		); err != nil {
+			return nil, status.Error(codes.Internal, "scan stores failed")
+		}
+		resp.Stores = append(resp.Stores, &store)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, status.Error(codes.Internal, "read stores failed")
+	}
+	return resp, nil
+}

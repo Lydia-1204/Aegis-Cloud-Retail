@@ -15,11 +15,13 @@ const _ = grpc.SupportPackageIsVersion9
 const (
 	BasicDataService_GetSkuDictionary_FullMethodName = "/basicdata.BasicDataService/GetSkuDictionary"
 	BasicDataService_GetStoreContext_FullMethodName  = "/basicdata.BasicDataService/GetStoreContext"
+	BasicDataService_ListStores_FullMethodName       = "/basicdata.BasicDataService/ListStores"
 )
 
 type BasicDataServiceClient interface {
 	GetSkuDictionary(ctx context.Context, in *SkuDictRequest, opts ...grpc.CallOption) (*SkuDictResponse, error)
 	GetStoreContext(ctx context.Context, in *StoreContextRequest, opts ...grpc.CallOption) (*StoreContextResponse, error)
+	ListStores(ctx context.Context, in *ListStoresRequest, opts ...grpc.CallOption) (*ListStoresResponse, error)
 }
 
 type basicDataServiceClient struct {
@@ -48,9 +50,19 @@ func (c *basicDataServiceClient) GetStoreContext(ctx context.Context, in *StoreC
 	return out, nil
 }
 
+func (c *basicDataServiceClient) ListStores(ctx context.Context, in *ListStoresRequest, opts ...grpc.CallOption) (*ListStoresResponse, error) {
+	out := new(ListStoresResponse)
+	err := c.cc.Invoke(ctx, BasicDataService_ListStores_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 type BasicDataServiceServer interface {
 	GetSkuDictionary(context.Context, *SkuDictRequest) (*SkuDictResponse, error)
 	GetStoreContext(context.Context, *StoreContextRequest) (*StoreContextResponse, error)
+	ListStores(context.Context, *ListStoresRequest) (*ListStoresResponse, error)
 }
 
 type UnimplementedBasicDataServiceServer struct{}
@@ -60,6 +72,9 @@ func (UnimplementedBasicDataServiceServer) GetSkuDictionary(context.Context, *Sk
 }
 func (UnimplementedBasicDataServiceServer) GetStoreContext(context.Context, *StoreContextRequest) (*StoreContextResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetStoreContext not implemented")
+}
+func (UnimplementedBasicDataServiceServer) ListStores(context.Context, *ListStoresRequest) (*ListStoresResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListStores not implemented")
 }
 
 func RegisterBasicDataServiceServer(s grpc.ServiceRegistrar, srv BasicDataServiceServer) {
@@ -102,6 +117,24 @@ func _BasicDataService_GetStoreContext_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _BasicDataService_ListStores_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListStoresRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(BasicDataServiceServer).ListStores(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: BasicDataService_ListStores_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(BasicDataServiceServer).ListStores(ctx, req.(*ListStoresRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 var BasicDataService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "basicdata.BasicDataService",
 	HandlerType: (*BasicDataServiceServer)(nil),
@@ -113,6 +146,10 @@ var BasicDataService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetStoreContext",
 			Handler:    _BasicDataService_GetStoreContext_Handler,
+		},
+		{
+			MethodName: "ListStores",
+			Handler:    _BasicDataService_ListStores_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

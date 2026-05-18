@@ -1,5 +1,6 @@
 import uuid
 import json
+import logging
 from typing import Optional, List, Dict
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -30,10 +31,11 @@ def calculate_tokens(text: str) -> int:
     return int(len(text) * 0.8)
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 class ChatCompletionReq(BaseModel):
-    store_id: int = Field(..., gt=0)
+    store_id: int = Field(..., ge=0)
     session_id: Optional[str] = None
     query: str = Field(..., min_length=1)
 
@@ -76,7 +78,7 @@ class ApiResponse(BaseModel):
 
 
 class SaveChatLogReq(BaseModel):
-    store_id: int = Field(..., gt=0, description="门店ID")
+    store_id: int = Field(..., ge=0, description="门店ID")
     session_id: str = Field(..., min_length=1, description="对话会话ID")
     query: str = Field(..., min_length=1, description="用户原始提问")
     context_snapshot: Optional[str] = Field(None, description="注入的经营数据/诊断结果快照")
@@ -140,6 +142,18 @@ async def _save_chat_log_async(store_id: int, session_id: str,
         await db.close()
 
 
+async def _build_context_snapshot(store_id: int) -> Dict:
+    return await llm_service.build_context_snapshot(store_id)
+
+
+def _sse_chat_event(item: ChatCompletionRes) -> str:
+    if hasattr(item, "model_dump_json"):
+        payload = item.model_dump_json()
+    else:
+        payload = item.json()
+    return f"data: {payload}\n\n"
+
+
 @router.post("/api/ai/chat/completions")
 async def chat_completions(
     req: ChatCompletionReq,
@@ -151,51 +165,63 @@ async def chat_completions(
     if req.session_id:
         history = await _get_session_history(db, req.session_id)
 
-    from ai_assistant.grpc_client import go_client
-
-    store_ctx = await go_client.get_store_context(req.store_id)
-    snapshot = await go_client.get_business_snapshot(req.store_id)
-    context_snapshot = json.dumps({
-        "store": store_ctx,
-        "snapshot": snapshot,
-    }, ensure_ascii=False, default=str)
-
-    final_prompt = await llm_service.get_final_prompt(db, req.store_id, req.query, history)
-
-    full_response = ""
-    
-    async for chunk in llm_service.chat_completion_stream(db, req.store_id, req.query, history):
-        full_response += chunk
-
-    await _save_chat_log_async(
+    context_snapshot_data = await _build_context_snapshot(req.store_id)
+    context_snapshot = json.dumps(context_snapshot_data, ensure_ascii=False, default=str)
+    final_prompt = await llm_service.get_final_prompt(
+        db,
         req.store_id,
-        session_id,
         req.query,
-        context_snapshot,
-        final_prompt,
-        full_response
+        history,
+        context_snapshot_data,
     )
 
     async def generate_response():
-        for chunk in [full_response]:
+        full_response = ""
+
+        async for chunk in llm_service.chat_completion_stream(
+            db,
+            req.store_id,
+            req.query,
+            history,
+            context_snapshot_data,
+        ):
+            if not chunk:
+                continue
+            full_response += chunk
             response_item = ChatCompletionRes(
                 session_id=session_id,
                 content=chunk,
                 is_finish=False
             )
-            yield f"data: {response_item.json()}\n\n"
+            yield _sse_chat_event(response_item)
+
+        try:
+            await _save_chat_log_async(
+                req.store_id,
+                session_id,
+                req.query,
+                context_snapshot,
+                final_prompt,
+                full_response
+            )
+        except Exception:
+            logger.exception("Failed to save AI chat log")
 
         end_response = ChatCompletionRes(
             session_id=session_id,
             content="",
             is_finish=True
         )
-        yield f"data: {end_response.json()}\n\n"
+        yield _sse_chat_event(end_response)
 
     return StreamingResponse(
         generate_response(),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"}
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
     )
 
 
@@ -366,14 +392,15 @@ async def debug_prompt(
     if session_id:
         history = await _get_session_history(db, session_id)
 
-    from ai_assistant.grpc_client import go_client
-    store_ctx = await go_client.get_store_context(store_id)
-    snapshot = await go_client.get_business_snapshot(store_id)
-    context_snapshot = json.dumps({
-        "store": store_ctx,
-        "snapshot": snapshot,
-    }, ensure_ascii=False, default=str)
-    final_prompt = await llm_service.get_final_prompt(db, store_id, query, history)
+    context_snapshot_data = await _build_context_snapshot(store_id)
+    context_snapshot = json.dumps(context_snapshot_data, ensure_ascii=False, default=str)
+    final_prompt = await llm_service.get_final_prompt(
+        db,
+        store_id,
+        query,
+        history,
+        context_snapshot_data,
+    )
 
     return ApiResponse(
         code=0,

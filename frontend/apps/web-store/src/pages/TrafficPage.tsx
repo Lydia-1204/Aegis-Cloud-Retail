@@ -13,7 +13,7 @@ const STATUS_TEXT: Record<TrafficStatus, string> = {
 
 export function TrafficPage() {
   const { me } = useAuth();
-  const [currentPeopleCount, setCurrentPeopleCount] = useState<number>(0);
+  const [currentPeopleCount, setCurrentPeopleCount] = useState<number | null>(null);
   const [status, setStatus] = useState<TrafficStatus>("connecting");
   const [error, setError] = useState("");
   const [lastEvent, setLastEvent] = useState("-");
@@ -43,6 +43,12 @@ export function TrafficPage() {
         setCurrentPeopleCount(nextCount);
         setLastEvent(payload.event);
         setHistory((prev) => [...prev, { time: nextTime, value: nextCount }].slice(-24));
+      },
+      onNoData: (payload) => {
+        setStatus("connected");
+        setError("");
+        setCurrentPeopleCount(null);
+        setLastEvent(payload.event);
       },
       onError: (message) => {
         setStatus("error");
@@ -103,7 +109,7 @@ export function TrafficPage() {
           <div className="traffic-main-top">
             <div>
               <p className="traffic-label">当前客流人数</p>
-              <p className="traffic-big-number">{currentPeopleCount}</p>
+              <p className="traffic-big-number">{currentPeopleCount ?? "无数据"}</p>
             </div>
             <div className="traffic-meta">
               <span>近 24 次采样</span>

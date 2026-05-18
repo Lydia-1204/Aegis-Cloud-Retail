@@ -44,6 +44,11 @@ class BasicDataServiceStub(object):
                 request_serializer=basic__data__service__pb2.StoreContextRequest.SerializeToString,
                 response_deserializer=basic__data__service__pb2.StoreContextResponse.FromString,
                 _registered_method=True)
+        self.ListStores = channel.unary_unary(
+                '/basicdata.BasicDataService/ListStores',
+                request_serializer=basic__data__service__pb2.ListStoresRequest.SerializeToString,
+                response_deserializer=basic__data__service__pb2.ListStoresResponse.FromString,
+                _registered_method=True)
 
 
 class BasicDataServiceServicer(object):
@@ -61,6 +66,12 @@ class BasicDataServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ListStores(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_BasicDataServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -73,6 +84,11 @@ def add_BasicDataServiceServicer_to_server(servicer, server):
                     servicer.GetStoreContext,
                     request_deserializer=basic__data__service__pb2.StoreContextRequest.FromString,
                     response_serializer=basic__data__service__pb2.StoreContextResponse.SerializeToString,
+            ),
+            'ListStores': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListStores,
+                    request_deserializer=basic__data__service__pb2.ListStoresRequest.FromString,
+                    response_serializer=basic__data__service__pb2.ListStoresResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -129,6 +145,33 @@ class BasicDataService(object):
             '/basicdata.BasicDataService/GetStoreContext',
             basic__data__service__pb2.StoreContextRequest.SerializeToString,
             basic__data__service__pb2.StoreContextResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListStores(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/basicdata.BasicDataService/ListStores',
+            basic__data__service__pb2.ListStoresRequest.SerializeToString,
+            basic__data__service__pb2.ListStoresResponse.FromString,
             options,
             channel_credentials,
             insecure,
