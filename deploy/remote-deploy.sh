@@ -18,8 +18,8 @@ install_runtime() {
 
   systemctl enable --now docker
 
-  if ! docker compose version >/dev/null 2>&1 && ! command -v docker-compose >/dev/null 2>&1; then
-    apt-get install -y docker-compose-plugin || apt-get install -y docker-compose
+  if ! docker compose version >/dev/null 2>&1; then
+    apt-get install -y docker-compose-plugin
   fi
 
   mkdir -p /etc/docker
