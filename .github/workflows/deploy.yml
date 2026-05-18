@@ -184,7 +184,14 @@ jobs:
           USER="${SERVER_USER:-root}"
           PORT="${SERVER_PORT:-22}"
           REMOTE_ARCHIVE="/tmp/aegis-release-${GITHUB_SHA}.tgz"
-          scp -i ~/.ssh/aegis_deploy_key -P "$PORT" /tmp/aegis-release.tgz "$USER@$SERVER_HOST:$REMOTE_ARCHIVE"
+          scp \
+            -i ~/.ssh/aegis_deploy_key \
+            -P "$PORT" \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=6 \
+            -o TCPKeepAlive=yes \
+            -o IPQoS=throughput \
+            /tmp/aegis-release.tgz "$USER@$SERVER_HOST:$REMOTE_ARCHIVE"
           echo "REMOTE_ARCHIVE=$REMOTE_ARCHIVE" >> "$GITHUB_ENV"
 
       - name: Deploy on server
@@ -196,7 +203,14 @@ jobs:
           PORT="${SERVER_PORT:-22}"
           APP_DIR="${SERVER_APP_DIR:-/opt/aegis}"
           ORIGIN="${SERVER_ORIGIN:-http://$SERVER_HOST}"
-          ssh -i ~/.ssh/aegis_deploy_key -p "$PORT" "$USER@$SERVER_HOST" \
+          ssh \
+            -i ~/.ssh/aegis_deploy_key \
+            -p "$PORT" \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=6 \
+            -o TCPKeepAlive=yes \
+            -o IPQoS=throughput \
+            "$USER@$SERVER_HOST" \
             "bash -s -- '$REMOTE_ARCHIVE' '$APP_DIR' '$ORIGIN' '$DEPLOY_TARGETS'" \
             < deploy/remote-deploy.sh
 
