@@ -25,8 +25,122 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect deploy scope
+        id: scope
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "deploy_needed=true" >> "$GITHUB_OUTPUT"
+            echo "build_frontend=true" >> "$GITHUB_OUTPUT"
+            echo "deploy_targets=all" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          BEFORE_SHA="${{ github.event.before }}"
+          CURRENT_SHA="${{ github.sha }}"
+
+          if [ -z "$BEFORE_SHA" ] || [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            echo "deploy_needed=true" >> "$GITHUB_OUTPUT"
+            echo "build_frontend=true" >> "$GITHUB_OUTPUT"
+            echo "deploy_targets=all" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          mapfile -t changed_files < <(git diff --name-only "$BEFORE_SHA" "$CURRENT_SHA")
+
+          deploy_needed=false
+          build_frontend=false
+          full_deploy=false
+          changed_hq=false
+          changed_store=false
+          changed_nginx=false
+          declare -A targets=()
+
+          for file in "${changed_files[@]}"; do
+            case "$file" in
+              frontend/apps/web-hq/*)
+                deploy_needed=true
+                build_frontend=true
+                changed_hq=true
+                ;;
+              frontend/apps/web-store/*)
+                deploy_needed=true
+                build_frontend=true
+                changed_store=true
+                ;;
+              frontend/packages/*|frontend/package.json|frontend/package-lock.json|frontend/eslint.config.mjs)
+                deploy_needed=true
+                build_frontend=true
+                changed_hq=true
+                changed_store=true
+                ;;
+              services/foundation-data/*)
+                deploy_needed=true
+                targets[foundation-data]=1
+                ;;
+              services/store-ops/*)
+                deploy_needed=true
+                targets[store-ops]=1
+                ;;
+              services/traffic-sense/*)
+                deploy_needed=true
+                targets[traffic-sense]=1
+                ;;
+              services/ai-assistant/*)
+                deploy_needed=true
+                targets[ai-assistant]=1
+                ;;
+              integration_gateway.py|deploy/Dockerfile.gateway)
+                deploy_needed=true
+                targets[gateway]=1
+                ;;
+              deploy/nginx.conf)
+                deploy_needed=true
+                changed_nginx=true
+                ;;
+              docker-compose.yml|deploy/docker-compose.prod.yml|deploy/remote-deploy.sh|docker/db-seed.sh|database/*|configs/*)
+                deploy_needed=true
+                full_deploy=true
+                ;;
+            esac
+          done
+
+          if [ "$full_deploy" = true ]; then
+            echo "deploy_needed=true" >> "$GITHUB_OUTPUT"
+            echo "build_frontend=true" >> "$GITHUB_OUTPUT"
+            echo "deploy_targets=all" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "$changed_hq" = true ] || [ "$changed_store" = true ] || [ "$changed_nginx" = true ]; then
+            targets[nginx]=1
+          fi
+
+          if [ "$deploy_needed" = false ]; then
+            echo "deploy_needed=false" >> "$GITHUB_OUTPUT"
+            echo "build_frontend=false" >> "$GITHUB_OUTPUT"
+            echo "deploy_targets=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          ordered_targets=()
+          for target in foundation-data store-ops traffic-sense ai-assistant gateway nginx; do
+            if [ -n "${targets[$target]:-}" ]; then
+              ordered_targets+=("$target")
+            fi
+          done
+
+          echo "deploy_needed=true" >> "$GITHUB_OUTPUT"
+          echo "build_frontend=$build_frontend" >> "$GITHUB_OUTPUT"
+          printf 'deploy_targets=%s\n' "$(IFS=,; echo "${ordered_targets[*]}")" >> "$GITHUB_OUTPUT"
 
       - name: Setup Node.js
+        if: steps.scope.outputs.build_frontend == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -34,6 +148,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - name: Build frontend
+        if: steps.scope.outputs.build_frontend == 'true'
         working-directory: frontend
         run: |
           npm ci
@@ -41,6 +156,7 @@ jobs:
           VITE_USE_MOCK=false VITE_API_BASE_URL=/api VITE_BASE_PATH=/store/ npm run build -w @aegis/web-store
 
       - name: Package release
+        if: steps.scope.outputs.deploy_needed == 'true'
         run: |
           tar \
             --exclude .git \
@@ -49,6 +165,7 @@ jobs:
             -czf /tmp/aegis-release.tgz .
 
       - name: Configure SSH
+        if: steps.scope.outputs.deploy_needed == 'true'
         run: |
           test -n "$SERVER_HOST"
           test -n "${{ secrets.SERVER_SSH_KEY }}"
@@ -62,6 +179,7 @@ jobs:
           ssh-keyscan -p "$PORT" "$SERVER_HOST" >> ~/.ssh/known_hosts
 
       - name: Upload release
+        if: steps.scope.outputs.deploy_needed == 'true'
         run: |
           USER="${SERVER_USER:-root}"
           PORT="${SERVER_PORT:-22}"
@@ -70,11 +188,18 @@ jobs:
           echo "REMOTE_ARCHIVE=$REMOTE_ARCHIVE" >> "$GITHUB_ENV"
 
       - name: Deploy on server
+        if: steps.scope.outputs.deploy_needed == 'true'
+        env:
+          DEPLOY_TARGETS: ${{ steps.scope.outputs.deploy_targets }}
         run: |
           USER="${SERVER_USER:-root}"
           PORT="${SERVER_PORT:-22}"
           APP_DIR="${SERVER_APP_DIR:-/opt/aegis}"
           ORIGIN="${SERVER_ORIGIN:-http://$SERVER_HOST}"
           ssh -i ~/.ssh/aegis_deploy_key -p "$PORT" "$USER@$SERVER_HOST" \
-            "bash -s -- '$REMOTE_ARCHIVE' '$APP_DIR' '$ORIGIN'" \
+            "bash -s -- '$REMOTE_ARCHIVE' '$APP_DIR' '$ORIGIN' '$DEPLOY_TARGETS'" \
             < deploy/remote-deploy.sh
+
+      - name: Skip deploy
+        if: steps.scope.outputs.deploy_needed != 'true'
+        run: echo "No deployable changes detected; skipping deployment."

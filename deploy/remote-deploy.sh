@@ -4,6 +4,7 @@ set -euo pipefail
 ARCHIVE_PATH="${1:?archive path is required}"
 APP_DIR="${2:-/opt/aegis}"
 PUBLIC_ORIGIN="${3:-http://127.0.0.1}"
+DEPLOY_TARGETS="${4:-all}"
 
 COMPOSE_FILES=(-f docker-compose.yml -f deploy/docker-compose.prod.yml)
 
@@ -40,8 +41,32 @@ compose_cmd() {
   if docker compose version >/dev/null 2>&1; then
     docker compose "$@"
   else
-    docker-compose "$@"
+    echo "docker compose plugin is required on the server; legacy docker-compose is not supported." >&2
+    exit 1
   fi
+}
+
+deploy_targeted() {
+  IFS=',' read -r -a targets <<< "$DEPLOY_TARGETS"
+
+  for service in "${targets[@]}"; do
+    case "$service" in
+      foundation-data|store-ops|traffic-sense|ai-assistant|gateway)
+        compose_cmd "${COMPOSE_FILES[@]}" rm -f -s "$service" || true
+        compose_cmd "${COMPOSE_FILES[@]}" up -d --build --no-deps "$service"
+        ;;
+      nginx)
+        compose_cmd "${COMPOSE_FILES[@]}" rm -f -s nginx || true
+        compose_cmd "${COMPOSE_FILES[@]}" up -d --force-recreate --no-deps nginx
+        ;;
+      "" )
+        ;;
+      * )
+        echo "Unknown deploy target: $service" >&2
+        exit 1
+        ;;
+    esac
+  done
 }
 
 ensure_env() {
@@ -92,9 +117,20 @@ deploy_release() {
   cd "$APP_DIR"
   ensure_env
 
-  compose_cmd "${COMPOSE_FILES[@]}" up -d --build --remove-orphans
+  if [ -z "$DEPLOY_TARGETS" ] || [ "$DEPLOY_TARGETS" = "all" ]; then
+    compose_cmd "${COMPOSE_FILES[@]}" up -d --build --remove-orphans
+  else
+    deploy_targeted
+  fi
+
   compose_cmd "${COMPOSE_FILES[@]}" ps
 }
 
 install_runtime
+
+if ! docker compose version >/dev/null 2>&1; then
+  echo "docker compose plugin is unavailable on the server. Please install/enable Docker Compose v2 before deploying." >&2
+  exit 1
+fi
+
 deploy_release
