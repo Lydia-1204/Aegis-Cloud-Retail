@@ -1,0 +1,80 @@
+name: Deploy Aegis
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      SERVER_HOST: ${{ secrets.SERVER_HOST }}
+      SERVER_USER: ${{ secrets.SERVER_USER }}
+      SERVER_PORT: ${{ secrets.SERVER_PORT }}
+      SERVER_APP_DIR: ${{ secrets.SERVER_APP_DIR }}
+      SERVER_ORIGIN: ${{ secrets.SERVER_ORIGIN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          VITE_USE_MOCK=false VITE_API_BASE_URL=/api VITE_BASE_PATH=/hq/ npm run build -w @aegis/web-hq
+          VITE_USE_MOCK=false VITE_API_BASE_URL=/api VITE_BASE_PATH=/store/ npm run build -w @aegis/web-store
+
+      - name: Package release
+        run: |
+          tar \
+            --exclude .git \
+            --exclude frontend/node_modules \
+            --exclude .DS_Store \
+            -czf /tmp/aegis-release.tgz .
+
+      - name: Configure SSH
+        run: |
+          test -n "$SERVER_HOST"
+          test -n "${{ secrets.SERVER_SSH_KEY }}"
+
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.SERVER_SSH_KEY }}" > ~/.ssh/aegis_deploy_key
+          chmod 600 ~/.ssh/aegis_deploy_key
+
+          PORT="${SERVER_PORT:-22}"
+          ssh-keyscan -p "$PORT" "$SERVER_HOST" >> ~/.ssh/known_hosts
+
+      - name: Upload release
+        run: |
+          USER="${SERVER_USER:-root}"
+          PORT="${SERVER_PORT:-22}"
+          REMOTE_ARCHIVE="/tmp/aegis-release-${GITHUB_SHA}.tgz"
+          scp -i ~/.ssh/aegis_deploy_key -P "$PORT" /tmp/aegis-release.tgz "$USER@$SERVER_HOST:$REMOTE_ARCHIVE"
+          echo "REMOTE_ARCHIVE=$REMOTE_ARCHIVE" >> "$GITHUB_ENV"
+
+      - name: Deploy on server
+        run: |
+          USER="${SERVER_USER:-root}"
+          PORT="${SERVER_PORT:-22}"
+          APP_DIR="${SERVER_APP_DIR:-/opt/aegis}"
+          ORIGIN="${SERVER_ORIGIN:-http://$SERVER_HOST}"
+          ssh -i ~/.ssh/aegis_deploy_key -p "$PORT" "$USER@$SERVER_HOST" \
+            "bash -s -- '$REMOTE_ARCHIVE' '$APP_DIR' '$ORIGIN'" \
+            < deploy/remote-deploy.sh
