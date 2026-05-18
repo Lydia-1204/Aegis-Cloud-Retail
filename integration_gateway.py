@@ -22,6 +22,8 @@ CORS_ALLOW_ORIGINS = [
 ]
 
 HTTP_ROUTES = (
+    ("/edge/traffic/snapshot", TRAFFIC_SENSE_BASE),
+    ("/edge/traffic/history-batch", TRAFFIC_SENSE_BASE),
     ("/api/ai/chat", AI_ASSISTANT_BASE),
     ("/api/ai/traffic", TRAFFIC_SENSE_BASE),
     ("/api/sales", STORE_OPS_BASE),
