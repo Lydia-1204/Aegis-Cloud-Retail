@@ -361,11 +361,16 @@ function ok<T>(data: T, message = "ok"): ApiResponse<T> {
 }
 
 export function mockWebSocketTraffic(storeId: number, callback: (count: number) => void) {
-  let currentCount = 10;
+  let currentCount = 30 + Math.floor(Math.random() * 7) - 3;
 
   const timer = setInterval(() => {
-    const delta = Math.floor(Math.random() * 6) - 2;
-    currentCount = Math.max(0, currentCount + delta);
+    const delta =
+      currentCount < 27
+        ? Math.floor(Math.random() * 3)
+        : currentCount > 33
+          ? -Math.floor(Math.random() * 3)
+          : Math.floor(Math.random() * 5) - 2;
+    currentCount = Math.min(40, Math.max(20, currentCount + delta));
     const mockMessage = {
       event: "TRAFFIC_TICK",
       store_id: storeId,

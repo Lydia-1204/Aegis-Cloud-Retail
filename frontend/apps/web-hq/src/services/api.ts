@@ -38,6 +38,8 @@ import {
   type ConfirmReq,
   type UserMe,
   type UsersQuery,
+  type WSTrafficNoDataUpdate,
+  type WSTrafficTickUpdate,
   type WSTrafficUpdate,
 } from "@aegis/shared";
 
@@ -222,10 +224,13 @@ function isWSTrafficUpdate(payload: unknown, expectedStoreId: number): payload i
     return false;
   }
   const data = payload as Record<string, unknown>;
-  if (data.event !== "TRAFFIC_TICK") {
+  if (data.store_id !== expectedStoreId) {
     return false;
   }
-  if (data.store_id !== expectedStoreId) {
+  if (data.event === "TRAFFIC_NO_DATA") {
+    return data.data === null;
+  }
+  if (data.event !== "TRAFFIC_TICK") {
     return false;
   }
   if (!data.data || typeof data.data !== "object") {
@@ -236,7 +241,8 @@ function isWSTrafficUpdate(payload: unknown, expectedStoreId: number): payload i
 }
 
 export interface TrafficRealtimeHandlers {
-  onTick: (payload: WSTrafficUpdate) => void;
+  onTick: (payload: WSTrafficTickUpdate) => void;
+  onNoData?: (payload: WSTrafficNoDataUpdate) => void;
   onOpen?: () => void;
   onError?: (message: string) => void;
   onClose?: () => void;
@@ -276,6 +282,10 @@ export function subscribeTrafficRealtime(
       const payload = JSON.parse(evt.data as string) as unknown;
       if (!isWSTrafficUpdate(payload, store_id)) {
         handlers.onError?.("收到的客流推送字段不符合规范");
+        return;
+      }
+      if (payload.event === "TRAFFIC_NO_DATA") {
+        handlers.onNoData?.(payload);
         return;
       }
       handlers.onTick(payload);

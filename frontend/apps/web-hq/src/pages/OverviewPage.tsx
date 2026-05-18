@@ -6,7 +6,7 @@ type TrafficStatus = "connecting" | "connected" | "closed" | "error";
 
 type StoreTrafficCard = {
   store: Store;
-  currentPeopleCount: number;
+  currentPeopleCount: number | null;
   status: TrafficStatus;
   error: string;
   lastUpdate: string;
@@ -23,7 +23,7 @@ const STATUS_TEXT: Record<TrafficStatus, string> = {
 function createInitialCard(store: Store): StoreTrafficCard {
   return {
     store,
-    currentPeopleCount: 0,
+    currentPeopleCount: null,
     status: "connecting",
     error: "",
     lastUpdate: "-",
@@ -91,6 +91,24 @@ export function OverviewPage() {
                 )
               );
             },
+            onNoData: () => {
+              if (!active) {
+                return;
+              }
+              setCards((prev) =>
+                prev.map((item) =>
+                  item.store.store_id === store.store_id
+                    ? {
+                        ...item,
+                        currentPeopleCount: null,
+                        lastUpdate: "无数据",
+                        status: "connected",
+                        error: "",
+                      }
+                    : item
+                )
+              );
+            },
             onError: (message) => {
               if (!active) {
                 return;
@@ -137,10 +155,15 @@ export function OverviewPage() {
   const summary = useMemo(() => {
     const totalStores = cards.length;
     const onlineStores = cards.filter((card) => card.status === "connected").length;
-    const totalPeople = cards.reduce((sum, card) => sum + card.currentPeopleCount, 0);
-    const avgPeople = totalStores > 0 ? Math.round(totalPeople / totalStores) : 0;
-    const maxCard = cards.reduce<StoreTrafficCard | null>((best, card) => {
-      if (!best || card.currentPeopleCount > best.currentPeopleCount) {
+    const cardsWithData = cards.filter((card) => card.currentPeopleCount !== null);
+    const totalPeople = cardsWithData.reduce(
+      (sum, card) => sum + (card.currentPeopleCount ?? 0),
+      0
+    );
+    const avgPeople =
+      cardsWithData.length > 0 ? Math.round(totalPeople / cardsWithData.length) : 0;
+    const maxCard = cardsWithData.reduce<StoreTrafficCard | null>((best, card) => {
+      if (!best || (card.currentPeopleCount ?? 0) > (best.currentPeopleCount ?? 0)) {
         return card;
       }
       return best;
@@ -152,7 +175,7 @@ export function OverviewPage() {
       totalPeople,
       avgPeople,
       topStoreName: maxCard?.store.store_name ?? "-",
-      topStorePeople: maxCard?.currentPeopleCount ?? 0,
+      topStorePeople: maxCard?.currentPeopleCount ?? null,
     };
   }, [cards]);
 
@@ -172,11 +195,14 @@ export function OverviewPage() {
         <div>
           <p className="hq-featured-label">当前最大客流门店</p>
           <h3>{summary.topStoreName}</h3>
-          <p className="hq-featured-meta">当前客流 {summary.topStorePeople} 人</p>
+          <p className="hq-featured-meta">
+            当前客流 {summary.topStorePeople ?? "无数据"}
+            {summary.topStorePeople === null ? "" : " 人"}
+          </p>
         </div>
         <div className="hq-featured-value">
           <span>峰值焦点</span>
-          <strong>{summary.topStorePeople}</strong>
+          <strong>{summary.topStorePeople ?? "-"}</strong>
         </div>
       </article>
 
@@ -220,7 +246,7 @@ export function OverviewPage() {
 
             <div className="hq-store-traffic-number">
               <span>当前客流</span>
-              <strong>{card.currentPeopleCount}</strong>
+              <strong>{card.currentPeopleCount ?? "无数据"}</strong>
             </div>
 
             <div className="hq-store-traffic-mini">

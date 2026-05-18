@@ -79,13 +79,7 @@ async def traffic_realtime(
 
     await manager.connect(websocket, store_id)
     try:
-        await websocket.send_json({
-            "event": "TRAFFIC_TICK",
-            "store_id": store_id,
-            "data": {
-                "current_people_count": traffic_simulator.get_current_count(store_id)
-            }
-        })
+        await websocket.send_json(traffic_simulator.get_connect_message(store_id))
 
         while True:
             data = await websocket.receive_text()
@@ -121,16 +115,17 @@ async def traffic_snapshot(
     #     raise HTTPException(status_code=403, detail="Insufficient permissions")
     
     # 推送实时数据到 WebSocket
-    await manager.send_message(
-        store_id=request.store_id,
-        message={
-            "event": "TRAFFIC_TICK",
-            "store_id": request.store_id,
-            "data": {
-                "current_people_count": request.current_people_count
-            }
-        }
-    )
+    if traffic_simulator.update_real_count(
+        request.store_id,
+        request.current_people_count,
+    ):
+        await manager.send_message(
+            store_id=request.store_id,
+            message=traffic_simulator.tick_message(
+                request.store_id,
+                request.current_people_count,
+            ),
+        )
     
     return ApiResponse(
         code=0,
