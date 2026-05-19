@@ -1,8 +1,14 @@
 import asyncio
 import random
+import time
+from dataclasses import dataclass
 from typing import Dict, Optional, Set
 
 from fastapi import WebSocket
+
+REAL_STORE_IDS = {1}
+MOCK_TRAFFIC_ENABLED = False
+REAL_TRAFFIC_STALE_SECONDS = 7.0
 
 
 class ConnectionManager:
@@ -35,12 +41,27 @@ class ConnectionManager:
                 self.disconnect(conn, store_id)
 
 
+@dataclass
+class RealTrafficState:
+    current_people_count: int
+    last_seen_at: float
+
+
 class TrafficSimulator:
-    def __init__(self, manager: ConnectionManager, real_store_ids: Optional[Set[int]] = None):
+    def __init__(
+        self,
+        manager: ConnectionManager,
+        real_store_ids: Optional[Set[int]] = None,
+        mock_enabled: bool = MOCK_TRAFFIC_ENABLED,
+        stale_seconds: float = REAL_TRAFFIC_STALE_SECONDS,
+    ):
         self.manager = manager
-        self.real_store_ids = real_store_ids or {1}
-        self.real_traffic: Dict[int, int] = {}
+        self.real_store_ids = real_store_ids or REAL_STORE_IDS
+        self.mock_enabled = mock_enabled
+        self.stale_seconds = stale_seconds
+        self.real_traffic: Dict[int, RealTrafficState] = {}
         self.mock_traffic: Dict[int, int] = {}
+        self.no_data_notified: Set[int] = set()
         self.target_count = 30
         self.min_count = 20
         self.max_count = 40
@@ -51,15 +72,18 @@ class TrafficSimulator:
         return store_id in self.real_store_ids
 
     def get_current_count(self, store_id: int) -> int:
-        if self.is_real_store(store_id):
-            return self.real_traffic.get(store_id, self.target_count)
+        if self.has_fresh_real_data(store_id):
+            return self.real_traffic[store_id].current_people_count
         return self.mock_traffic.get(store_id, self.target_count)
 
     def get_connect_message(self, store_id: int) -> dict:
-        if self.is_real_store(store_id):
-            if store_id not in self.real_traffic:
-                return self.no_data_message(store_id)
-            return self.tick_message(store_id, self.real_traffic[store_id])
+        if self.has_fresh_real_data(store_id):
+            state = self.real_traffic[store_id]
+            return self.tick_message(store_id, state.current_people_count)
+
+        if self.is_real_store(store_id) or not self.mock_enabled:
+            self.no_data_notified.add(store_id)
+            return self.no_data_message(store_id)
 
         if store_id not in self.mock_traffic:
             self.mock_traffic[store_id] = self._initial_count()
@@ -68,8 +92,18 @@ class TrafficSimulator:
     def update_real_count(self, store_id: int, current_people_count: int) -> bool:
         if not self.is_real_store(store_id):
             return False
-        self.real_traffic[store_id] = current_people_count
+        self.real_traffic[store_id] = RealTrafficState(
+            current_people_count=current_people_count,
+            last_seen_at=time.monotonic(),
+        )
+        self.no_data_notified.discard(store_id)
         return True
+
+    def has_fresh_real_data(self, store_id: int) -> bool:
+        state = self.real_traffic.get(store_id)
+        if state is None:
+            return False
+        return time.monotonic() - state.last_seen_at <= self.stale_seconds
 
     def tick_message(self, store_id: int, current_people_count: int) -> dict:
         return {
@@ -86,7 +120,6 @@ class TrafficSimulator:
             "store_id": store_id,
             "data": None,
         }
-
 
     def _initial_count(self) -> int:
         return random.randint(self.target_count - 3, self.target_count + 3)
@@ -112,7 +145,16 @@ class TrafficSimulator:
             await asyncio.sleep(1)
 
             for store_id in list(self.manager.active_connections.keys()):
-                if self.is_real_store(store_id):
+                if self.has_fresh_real_data(store_id):
+                    continue
+
+                if self.is_real_store(store_id) or not self.mock_enabled:
+                    if store_id not in self.no_data_notified:
+                        await self.manager.send_message(
+                            store_id,
+                            self.no_data_message(store_id),
+                        )
+                        self.no_data_notified.add(store_id)
                     continue
 
                 if store_id not in self.mock_traffic:
@@ -127,6 +169,8 @@ class TrafficSimulator:
                 )
 
     def start(self):
+        if self.running:
+            return
         self.running = True
         self.task = asyncio.create_task(self.simulate_traffic())
 
