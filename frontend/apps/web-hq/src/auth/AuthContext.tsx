@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import type { LoginReq, UserMe } from "@aegis/shared";
 import { login, me } from "../services/api";
+import { clearStoredAuthToken, readStoredAuthToken, writeStoredAuthToken } from "./storage";
 
 interface AuthState {
   token: string | null;
@@ -11,7 +12,6 @@ interface AuthState {
   signout: () => void;
 }
 
-const AUTH_KEY = "aegis_hq_auth";
 const AuthContext = createContext<AuthState | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -20,18 +20,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const raw = localStorage.getItem(AUTH_KEY);
-    if (!raw) {
+    const storedToken = readStoredAuthToken();
+    if (!storedToken) {
       setLoading(false);
       return;
     }
 
-    const parsed = JSON.parse(raw) as { token: string };
-    setToken(parsed.token);
-    void me(parsed.token)
+    setToken(storedToken);
+    void me(storedToken)
       .then((res) => setProfile(res))
       .catch(() => {
-        localStorage.removeItem(AUTH_KEY);
+        clearStoredAuthToken();
         setToken(null);
         setProfile(null);
       })
@@ -41,13 +40,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function signin(payload: LoginReq) {
     const data = await login(payload);
     setToken(data.token);
-    localStorage.setItem(AUTH_KEY, JSON.stringify({ token: data.token }));
+    writeStoredAuthToken(data.token);
     const profileRes = await me(data.token);
     setProfile(profileRes);
   }
 
   function signout() {
-    localStorage.removeItem(AUTH_KEY);
+    clearStoredAuthToken();
     setToken(null);
     setProfile(null);
   }

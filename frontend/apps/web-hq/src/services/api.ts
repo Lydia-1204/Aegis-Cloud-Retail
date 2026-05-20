@@ -42,27 +42,18 @@ import {
   type WSTrafficTickUpdate,
   type WSTrafficUpdate,
 } from "@aegis/shared";
+import { readStoredAuthToken } from "../auth/storage";
 
 const useMock = import.meta.env.VITE_USE_MOCK !== "false";
 const mockApi = new AegisMockApi();
 const anonHttp = new AegisHttpClient(DEFAULT_API_BASES);
-const AUTH_KEY = "aegis_hq_auth";
 
 function httpWithToken(token?: string) {
   return new AegisHttpClient(DEFAULT_API_BASES, token);
 }
 
 function readAuthToken(): string | undefined {
-  const raw = localStorage.getItem(AUTH_KEY);
-  if (!raw) {
-    return undefined;
-  }
-  try {
-    const parsed = JSON.parse(raw) as { token?: string };
-    return parsed.token;
-  } catch {
-    return undefined;
-  }
+  return readStoredAuthToken() ?? undefined;
 }
 
 function statusFromCode(code: number): number {
