@@ -34,7 +34,7 @@ func main() {
 		log.Fatalf("ping db: %v", err)
 	}
 
-	srv := app.NewServer(db, cfg.JWTSecret)
+	srv := app.NewServer(db, cfg.JWTSecret, cfg.AIAnalysisGRPCAddrs)
 
 	grpcListener, err := net.Listen("tcp", cfg.GRPCAddr)
 	if err != nil {

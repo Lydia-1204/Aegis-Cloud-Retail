@@ -142,8 +142,8 @@ async def _save_chat_log_async(store_id: int, session_id: str,
         await db.close()
 
 
-async def _build_context_snapshot(store_id: int) -> Dict:
-    return await llm_service.build_context_snapshot(store_id)
+async def _build_context_snapshot(db: AsyncSession, store_id: int) -> Dict:
+    return await llm_service.build_context_snapshot(store_id, db)
 
 
 def _sse_chat_event(item: ChatCompletionRes) -> str:
@@ -165,7 +165,7 @@ async def chat_completions(
     if req.session_id:
         history = await _get_session_history(db, req.session_id)
 
-    context_snapshot_data = await _build_context_snapshot(req.store_id)
+    context_snapshot_data = await _build_context_snapshot(db, req.store_id)
     context_snapshot = json.dumps(context_snapshot_data, ensure_ascii=False, default=str)
     final_prompt = await llm_service.get_final_prompt(
         db,
@@ -392,7 +392,7 @@ async def debug_prompt(
     if session_id:
         history = await _get_session_history(db, session_id)
 
-    context_snapshot_data = await _build_context_snapshot(store_id)
+    context_snapshot_data = await _build_context_snapshot(db, store_id)
     context_snapshot = json.dumps(context_snapshot_data, ensure_ascii=False, default=str)
     final_prompt = await llm_service.get_final_prompt(
         db,

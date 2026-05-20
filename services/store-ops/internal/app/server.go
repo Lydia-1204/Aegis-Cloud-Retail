@@ -24,8 +24,9 @@ const (
 )
 
 type Server struct {
-	db        *sql.DB
-	jwtSecret []byte
+	db         *sql.DB
+	jwtSecret  []byte
+	aiForecast *aiForecastClient
 }
 
 type response struct {
@@ -53,8 +54,12 @@ type authUser struct {
 
 type authedHandler func(http.ResponseWriter, *http.Request, authUser)
 
-func NewServer(db *sql.DB, jwtSecret string) *Server {
-	return &Server{db: db, jwtSecret: []byte(jwtSecret)}
+func NewServer(db *sql.DB, jwtSecret string, aiAnalysisAddrs []string) *Server {
+	aiForecast, err := newAIForecastClient(aiAnalysisAddrs)
+	if err != nil {
+		log.Printf("ai forecast client disabled: %v", err)
+	}
+	return &Server{db: db, jwtSecret: []byte(jwtSecret), aiForecast: aiForecast}
 }
 
 func (s *Server) Routes() http.Handler {
@@ -67,6 +72,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("/api/sales/daily/", s.auth(s.handleSalesDailyByID))
 	mux.HandleFunc("/api/inventory", s.auth(s.handleInventory))
 	mux.HandleFunc("/api/inventory/adjust", s.auth(s.handleInventoryAdjust))
+	mux.HandleFunc("/api/transfers/forecast", s.auth(s.handleTransferForecast))
 	mux.HandleFunc("/api/transfers", s.auth(s.handleTransfers))
 	mux.HandleFunc("/api/transfers/", s.auth(s.handleTransferAction))
 	return mux

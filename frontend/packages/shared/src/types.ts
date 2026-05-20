@@ -341,6 +341,11 @@ export interface TransferCreateReq {
   }>;
 }
 
+export interface TransferForecast {
+  target_date: string;
+  predicted_sales: number;
+}
+
 export interface AcknowledgeReq {
   details?: Array<{
     detail_id: number;
