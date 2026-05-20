@@ -11,6 +11,14 @@ import {
 type SalesRowWithStore = SalesDaily & { store_name: string };
 type InventoryRowWithStore = InventoryItem & { store_name: string; store_code: string };
 
+function isBusinessStore(store: Store): boolean {
+  return store.store_id > 0;
+}
+
+function isBusinessStoreId(store_id: number): boolean {
+  return store_id > 0;
+}
+
 function parseError(err: unknown): string {
   return err instanceof Error ? err.message : "请求失败";
 }
@@ -106,7 +114,7 @@ export function GlobalAnalyticsPage() {
           fetchStores({ page: 1, limit: 200 }),
           fetchSkuCategories(),
         ]);
-        setStores(storeRes.data);
+        setStores(storeRes.data.filter(isBusinessStore));
         setCategories(categoryRes);
       } catch (err) {
         setBaseError(parseError(err));
@@ -162,8 +170,8 @@ export function GlobalAnalyticsPage() {
     setSalesError("");
     try {
       const targetStoreIds = salesStoreId
-        ? [Number(salesStoreId)]
-        : stores.map((store) => store.store_id);
+        ? [Number(salesStoreId)].filter(isBusinessStoreId)
+        : stores.map((store) => store.store_id).filter(isBusinessStoreId);
 
       const chunks = await Promise.all(
         targetStoreIds.map((store_id) =>
@@ -174,14 +182,19 @@ export function GlobalAnalyticsPage() {
         )
       );
 
-      const merged = chunks.flatMap((rows, idx) => {
-        const store_id = targetStoreIds[idx];
-        const storeName = storeNameMap.get(store_id)?.name ?? `门店${store_id}`;
-        return rows.map((row) => ({
+      const uniqueRows = new Map<number, SalesRowWithStore>();
+      chunks.flat().forEach((row) => {
+        if (!isBusinessStoreId(row.store_id) || uniqueRows.has(row.sales_id)) {
+          return;
+        }
+        const storeName = storeNameMap.get(row.store_id)?.name ?? `门店${row.store_id}`;
+        uniqueRows.set(row.sales_id, {
           ...row,
           store_name: storeName,
-        }));
+        });
       });
+
+      const merged = Array.from(uniqueRows.values());
 
       merged.sort((a, b) => {
         const t = b.sales_date.localeCompare(a.sales_date);
@@ -215,8 +228,8 @@ export function GlobalAnalyticsPage() {
     setInventoryError("");
     try {
       const targetStoreIds = inventoryStoreId
-        ? [Number(inventoryStoreId)]
-        : stores.map((store) => store.store_id);
+        ? [Number(inventoryStoreId)].filter(isBusinessStoreId)
+        : stores.map((store) => store.store_id).filter(isBusinessStoreId);
 
       const chunks = await Promise.all(
         targetStoreIds.map((store_id) =>
@@ -231,11 +244,13 @@ export function GlobalAnalyticsPage() {
       const merged = chunks.flatMap((rows, idx) => {
         const store_id = targetStoreIds[idx];
         const storeInfo = storeNameMap.get(store_id);
-        return rows.map((row) => ({
-          ...row,
-          store_name: storeInfo?.name ?? `门店${store_id}`,
-          store_code: storeInfo?.code ?? "-",
-        }));
+        return rows
+          .filter((row) => isBusinessStoreId(row.store_id))
+          .map((row) => ({
+            ...row,
+            store_name: storeInfo?.name ?? `门店${store_id}`,
+            store_code: storeInfo?.code ?? "-",
+          }));
       });
 
       merged.sort((a, b) => {

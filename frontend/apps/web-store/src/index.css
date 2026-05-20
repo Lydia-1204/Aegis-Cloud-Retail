@@ -502,11 +502,11 @@ th {
 }
 
 .sales-form-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .sales-edit-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .sales-form-grid .date-field {
@@ -548,6 +548,41 @@ th {
 
 .sales-edit-grid .date-field input {
   width: 100%;
+}
+
+.sales-flow-section {
+  grid-column: 1 / -1;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 10px;
+  background: #f8fafc;
+}
+
+.sales-flow-section h4 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: #334155;
+}
+
+.sales-summary-grid,
+.sales-sku-grid {
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.sales-entry-field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.sales-entry-field span {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.sales-entry-field input[readonly] {
+  background: #eef2f7;
+  color: #0f172a;
 }
 
 .sales-form-actions {
