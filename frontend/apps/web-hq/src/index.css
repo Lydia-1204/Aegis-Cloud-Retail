@@ -462,6 +462,14 @@ th {
   margin: 0;
 }
 
+.transfer-forecast-value {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  font-weight: 700;
+  color: #0f172a;
+}
+
 .check-line {
   display: inline-flex;
   align-items: center;

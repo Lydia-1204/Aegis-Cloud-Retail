@@ -114,6 +114,7 @@ services:
       STORE_OPS_GRPC_ADDR: ":50055"
       FOUNDATION_DATA_JWT_SECRET: *jwt-secret
       JWT_SECRET: *jwt-secret
+      AI_ANALYSIS_GRPC_ADDRS: ai-assistant:50053
     ports:
       - "8082:8082"
       - "50055:50055"

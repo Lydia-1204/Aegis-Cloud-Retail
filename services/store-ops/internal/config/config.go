@@ -1,12 +1,16 @@
 package config
 
-import "os"
+import (
+	"os"
+	"strings"
+)
 
 type Config struct {
-	HTTPAddr    string
-	GRPCAddr    string
-	DatabaseURL string
-	JWTSecret   string
+	HTTPAddr            string
+	GRPCAddr            string
+	DatabaseURL         string
+	JWTSecret           string
+	AIAnalysisGRPCAddrs []string
 }
 
 func Load() Config {
@@ -29,10 +33,30 @@ func Load() Config {
 	if jwtSecret == "" {
 		jwtSecret = "foundation-data-dev-secret"
 	}
-	return Config{
-		HTTPAddr:    addr,
-		GRPCAddr:    grpcAddr,
-		DatabaseURL: dbURL,
-		JWTSecret:   jwtSecret,
+	aiAnalysisAddrs := splitCSV(os.Getenv("AI_ANALYSIS_GRPC_ADDRS"))
+	if len(aiAnalysisAddrs) == 0 {
+		aiAnalysisAddrs = splitCSV(os.Getenv("AI_ANALYSIS_GRPC_ADDR"))
 	}
+	if len(aiAnalysisAddrs) == 0 {
+		aiAnalysisAddrs = []string{"localhost:50053"}
+	}
+	return Config{
+		HTTPAddr:            addr,
+		GRPCAddr:            grpcAddr,
+		DatabaseURL:         dbURL,
+		JWTSecret:           jwtSecret,
+		AIAnalysisGRPCAddrs: aiAnalysisAddrs,
+	}
+}
+
+func splitCSV(raw string) []string {
+	parts := strings.Split(raw, ",")
+	addrs := make([]string, 0, len(parts))
+	for _, part := range parts {
+		addr := strings.TrimSpace(part)
+		if addr != "" {
+			addrs = append(addrs, addr)
+		}
+	}
+	return addrs
 }

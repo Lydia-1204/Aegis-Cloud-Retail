@@ -30,6 +30,7 @@ import {
   type SalesDailyDetail,
   type SalesQuery,
   type TransferOrder,
+  type TransferForecast,
   type TransfersQuery,
   type UserCreateReq,
   type UserUpdateReq,
@@ -561,6 +562,21 @@ export async function createTransfer(payload: TransferCreateReq): Promise<Transf
     return unwrapMockEnvelope(res);
   }
   return authedHttp().postOne<TransferCreateReq, TransferOrder>("storeOps", "/transfers", payload);
+}
+
+export async function fetchTransferForecast(store_id: number, sku_id: number): Promise<TransferForecast | null> {
+  if (useMock) {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return {
+      target_date: tomorrow.toISOString().slice(0, 10),
+      predicted_sales: Math.max(1, Math.round(18 + (store_id % 5) * 3 + (sku_id % 11))),
+    };
+  }
+  return authedHttp().getOne<TransferForecast | null>(
+    "storeOps",
+    `/transfers/forecast?store_id=${encodeURIComponent(store_id)}&sku_id=${encodeURIComponent(sku_id)}`
+  );
 }
 
 async function patchTransfer<TReq extends object, TRes>(

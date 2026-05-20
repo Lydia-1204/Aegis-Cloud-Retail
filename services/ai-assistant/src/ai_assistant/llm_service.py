@@ -2,11 +2,12 @@ import logging
 from typing import AsyncGenerator, Dict, List, Optional
 
 from openai import AsyncOpenAI
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
 from ai_assistant.config import deepseek_api_key, deepseek_base_url
-from ai_assistant.db_models import AIExpertKnowledge
+from ai_assistant.db_models import AICustomer, AIExpertKnowledge
 from ai_assistant.grpc_client import go_client
 
 
@@ -40,6 +41,15 @@ class LLMService:
         except (TypeError, ValueError):
             return 0
 
+    @staticmethod
+    def _format_datetime(value) -> str:
+        if not value:
+            return ""
+        try:
+            return value.isoformat().replace("+00:00", "Z")
+        except AttributeError:
+            return str(value)
+
     async def _get_expert_knowledge(self, db: AsyncSession, scenario_key: str = None) -> str:
         try:
             query = select(AIExpertKnowledge).filter(AIExpertKnowledge.is_active == True)
@@ -60,22 +70,29 @@ class LLMService:
         except Exception:
             return ""
 
-    async def build_context_snapshot(self, store_id: int) -> Dict:
+    async def build_context_snapshot(self, store_id: int, db: Optional[AsyncSession] = None) -> Dict:
         if store_id == 0:
-            return await self._build_headquarters_context_snapshot()
+            return await self._build_headquarters_context_snapshot(db)
 
         store_ctx = await go_client.get_store_context(store_id)
         snapshot = await go_client.get_business_snapshot(store_id)
+        traffic = await self._get_store_traffic_summary(db, store_id)
         return {
             "scope": "store",
             "store": store_ctx,
             "snapshot": snapshot,
+            "traffic": traffic,
         }
 
-    async def _build_headquarters_context_snapshot(self) -> Dict:
+    async def _build_headquarters_context_snapshot(self, db: Optional[AsyncSession] = None) -> Dict:
         hq_ctx = await go_client.get_store_context(0)
         stores = await go_client.list_stores("active")
         snapshots = []
+        traffic_summary = await self._get_headquarters_traffic_summary(db, stores)
+        traffic_by_store = {
+            self._format_int(item.get("store_id")): item
+            for item in traffic_summary.get("stores", [])
+        }
         for store in stores:
             real_store_id = self._format_int(store.get("store_id"))
             if real_store_id <= 0:
@@ -84,6 +101,7 @@ class LLMService:
             snapshots.append({
                 "store": store,
                 "snapshot": snapshot,
+                "traffic": traffic_by_store.get(real_store_id, self._empty_traffic_summary(real_store_id)),
             })
 
         return {
@@ -92,7 +110,265 @@ class LLMService:
             "stores": stores,
             "snapshots": snapshots,
             "summary": self._summarize_headquarters_snapshots(snapshots),
+            "traffic_summary": traffic_summary,
         }
+
+    def _empty_traffic_summary(self, store_id: int) -> Dict:
+        return {
+            "store_id": store_id,
+            "has_data": False,
+            "batch_count": 0,
+            "total_enter": 0,
+            "total_leave": 0,
+            "net_flow": 0,
+            "first_start_time": "",
+            "last_end_time": "",
+            "recent_batches": [],
+        }
+
+    async def _get_store_traffic_summary(
+        self,
+        db: Optional[AsyncSession],
+        store_id: int,
+    ) -> Dict:
+        traffic = self._empty_traffic_summary(store_id)
+        if db is None or store_id <= 0:
+            return traffic
+
+        try:
+            summary_stmt = (
+                select(
+                    func.count(AICustomer.ai_customer_id),
+                    func.coalesce(func.sum(AICustomer.customer_enter_total), 0),
+                    func.coalesce(func.sum(AICustomer.customer_leave_total), 0),
+                    func.min(AICustomer.customer_start_time),
+                    func.max(AICustomer.customer_end_time),
+                )
+                .where(AICustomer.store_id == store_id)
+            )
+            result = await db.execute(summary_stmt)
+            count, total_enter, total_leave, first_start, last_end = result.one()
+            count = self._format_int(count)
+            total_enter = self._format_int(total_enter)
+            total_leave = self._format_int(total_leave)
+
+            if count <= 0:
+                return traffic
+
+            batch_stmt = (
+                select(AICustomer)
+                .where(AICustomer.store_id == store_id)
+                .order_by(AICustomer.customer_start_time)
+            )
+            batch_result = await db.execute(batch_stmt)
+            recent_batches = []
+            for item in batch_result.scalars().all():
+                recent_batches.append({
+                    "customer_start_time": self._format_datetime(item.customer_start_time),
+                    "customer_end_time": self._format_datetime(item.customer_end_time),
+                    "customer_enter_total": self._format_int(item.customer_enter_total),
+                    "customer_leave_total": self._format_int(item.customer_leave_total),
+                })
+
+            traffic.update({
+                "has_data": True,
+                "batch_count": count,
+                "total_enter": total_enter,
+                "total_leave": total_leave,
+                "net_flow": total_enter - total_leave,
+                "first_start_time": self._format_datetime(first_start),
+                "last_end_time": self._format_datetime(last_end),
+                "recent_batches": recent_batches,
+            })
+            return traffic
+        except Exception:
+            logger.exception("Failed to load traffic summary for store_id=%s", store_id)
+            return traffic
+
+    async def _get_headquarters_traffic_summary(
+        self,
+        db: Optional[AsyncSession],
+        stores: List[Dict],
+    ) -> Dict:
+        store_ids = [
+            self._format_int(store.get("store_id"))
+            for store in stores
+            if self._format_int(store.get("store_id")) > 0
+        ]
+        empty_summary = {
+            "has_data": False,
+            "store_count": len(store_ids),
+            "total_enter": 0,
+            "total_leave": 0,
+            "net_flow": 0,
+            "first_start_time": "",
+            "last_end_time": "",
+            "stores": [self._empty_traffic_summary(store_id) for store_id in store_ids],
+        }
+        if db is None or not store_ids:
+            return empty_summary
+
+        try:
+            stmt = (
+                select(
+                    AICustomer.store_id,
+                    func.count(AICustomer.ai_customer_id),
+                    func.coalesce(func.sum(AICustomer.customer_enter_total), 0),
+                    func.coalesce(func.sum(AICustomer.customer_leave_total), 0),
+                    func.min(AICustomer.customer_start_time),
+                    func.max(AICustomer.customer_end_time),
+                )
+                .where(AICustomer.store_id.in_(store_ids))
+                .group_by(AICustomer.store_id)
+            )
+            result = await db.execute(stmt)
+            rows = result.all()
+            rows_by_store = {self._format_int(row[0]): row for row in rows}
+
+            batch_stmt = (
+                select(AICustomer)
+                .where(AICustomer.store_id.in_(store_ids))
+                .order_by(AICustomer.store_id, AICustomer.customer_start_time)
+            )
+            batch_result = await db.execute(batch_stmt)
+            batches_by_store: Dict[int, List[Dict]] = {}
+            for item in batch_result.scalars().all():
+                batches_by_store.setdefault(self._format_int(item.store_id), []).append({
+                    "customer_start_time": self._format_datetime(item.customer_start_time),
+                    "customer_end_time": self._format_datetime(item.customer_end_time),
+                    "customer_enter_total": self._format_int(item.customer_enter_total),
+                    "customer_leave_total": self._format_int(item.customer_leave_total),
+                })
+
+            store_summaries = []
+            total_enter = 0
+            total_leave = 0
+            first_start = None
+            last_end = None
+            for store_id in store_ids:
+                row = rows_by_store.get(store_id)
+                if row is None:
+                    store_summaries.append(self._empty_traffic_summary(store_id))
+                    continue
+
+                _, count, enter_sum, leave_sum, store_first_start, store_last_end = row
+                enter_sum = self._format_int(enter_sum)
+                leave_sum = self._format_int(leave_sum)
+                total_enter += enter_sum
+                total_leave += leave_sum
+                if store_first_start and (first_start is None or store_first_start < first_start):
+                    first_start = store_first_start
+                if store_last_end and (last_end is None or store_last_end > last_end):
+                    last_end = store_last_end
+
+                store_summaries.append({
+                    "store_id": store_id,
+                    "has_data": True,
+                    "batch_count": self._format_int(count),
+                    "total_enter": enter_sum,
+                    "total_leave": leave_sum,
+                    "net_flow": enter_sum - leave_sum,
+                    "first_start_time": self._format_datetime(store_first_start),
+                    "last_end_time": self._format_datetime(store_last_end),
+                    "recent_batches": batches_by_store.get(store_id, []),
+                })
+
+            return {
+                "has_data": any(item.get("has_data") for item in store_summaries),
+                "store_count": len(store_ids),
+                "total_enter": total_enter,
+                "total_leave": total_leave,
+                "net_flow": total_enter - total_leave,
+                "first_start_time": self._format_datetime(first_start),
+                "last_end_time": self._format_datetime(last_end),
+                "stores": sorted(
+                    store_summaries,
+                    key=lambda item: self._format_int(item.get("total_enter")),
+                    reverse=True,
+                ),
+            }
+        except Exception:
+            logger.exception("Failed to load headquarters traffic summary")
+            return empty_summary
+
+    def _format_store_traffic_context(self, traffic: Dict) -> str:
+        lines = [
+            "客流数据口径说明：",
+            "- 数据来源：Python 数据库 ai_customer 表，即 YOLO/边缘节点 history-batch 入库后的历史客流批次。",
+            "- customer_enter_total 表示统计窗口内进店人数，customer_leave_total 表示统计窗口内离店人数。",
+            "- 客流数据用于经营分析，不等同于实时画面 current_people_count。",
+        ]
+
+        if not traffic.get("has_data"):
+            lines.append("- 暂无客流历史数据。")
+            return "\n".join(lines)
+
+        lines.extend([
+            "",
+            "当前门店客流汇总：",
+            f"- 数据时间范围：{traffic.get('first_start_time', '')} 至 {traffic.get('last_end_time', '')}",
+            f"- 客流批次数：{traffic.get('batch_count', 0)}",
+            f"- 累计进店人数：{traffic.get('total_enter', 0)}人",
+            f"- 累计离店人数：{traffic.get('total_leave', 0)}人",
+            f"- 净流入人数：{traffic.get('net_flow', 0)}人",
+        ])
+
+        recent_batches = traffic.get("recent_batches") or []
+        if recent_batches:
+            lines.append("- 全部客流批次：")
+            for batch in recent_batches:
+                lines.append(
+                    f"  - {batch.get('customer_start_time', '')} 至 {batch.get('customer_end_time', '')}："
+                    f"进店 {batch.get('customer_enter_total', 0)} 人，"
+                    f"离店 {batch.get('customer_leave_total', 0)} 人"
+                )
+
+        return "\n".join(lines)
+
+    def _format_headquarters_traffic_context(self, context_snapshot: Dict) -> str:
+        traffic_summary = context_snapshot.get("traffic_summary") or {}
+        stores = context_snapshot.get("stores") or []
+        store_name_map = {
+            self._format_int(store.get("store_id")): store.get("store_name") or f"门店{store.get('store_id')}"
+            for store in stores
+        }
+        lines = [
+            "总部客流数据口径说明：",
+            "- 数据来源：Python 数据库 ai_customer 表，即 YOLO/边缘节点 history-batch 入库后的历史客流批次。",
+            "- 当前为总部视角，客流数据按全部启用门店聚合，并可按门店拆分。",
+        ]
+
+        if not traffic_summary.get("has_data"):
+            lines.append("- 全部启用门店暂无客流历史数据。")
+            return "\n".join(lines)
+
+        lines.extend([
+            "",
+            "全部门店客流汇总：",
+            f"- 纳入门店数：{traffic_summary.get('store_count', 0)}",
+            f"- 数据时间范围：{traffic_summary.get('first_start_time', '')} 至 {traffic_summary.get('last_end_time', '')}",
+            f"- 累计进店人数：{traffic_summary.get('total_enter', 0)}人",
+            f"- 累计离店人数：{traffic_summary.get('total_leave', 0)}人",
+            f"- 净流入人数：{traffic_summary.get('net_flow', 0)}人",
+            "- 按进店人数排序的门店客流概览：",
+        ])
+
+        for item in traffic_summary.get("stores", []):
+            store_id = self._format_int(item.get("store_id"))
+            store_name = store_name_map.get(store_id, f"门店{store_id}")
+            if not item.get("has_data"):
+                lines.append(f"  - store_id={store_id}，{store_name}：暂无客流历史数据")
+                continue
+            lines.append(
+                f"  - store_id={store_id}，{store_name}："
+                f"进店 {item.get('total_enter', 0)} 人，"
+                f"离店 {item.get('total_leave', 0)} 人，"
+                f"净流入 {item.get('net_flow', 0)} 人，"
+                f"批次 {item.get('batch_count', 0)}，"
+                f"时间范围 {item.get('first_start_time', '')} 至 {item.get('last_end_time', '')}"
+            )
+
+        return "\n".join(lines)
 
     def _summarize_headquarters_snapshots(self, snapshots: List[Dict]) -> Dict:
         daily_totals: Dict[str, Dict] = {}
@@ -199,11 +475,12 @@ class LLMService:
 
     async def _build_business_context(
         self,
+        db: AsyncSession,
         store_id: int,
         context_snapshot: Optional[Dict] = None,
     ) -> str:
         if context_snapshot is None:
-            context_snapshot = await self.build_context_snapshot(store_id)
+            context_snapshot = await self.build_context_snapshot(store_id, db)
         if context_snapshot.get("scope") == "headquarters":
             return await self._format_headquarters_context(context_snapshot)
         return await self._format_store_context(context_snapshot)
@@ -281,6 +558,10 @@ class LLMService:
 
             parts.append("\n".join(inventory_lines))
 
+        store_id = self._format_int(store_ctx.get("store_id"))
+        traffic = context_snapshot.get("traffic") or self._empty_traffic_summary(store_id)
+        parts.append(self._format_store_traffic_context(traffic))
+
         return "\n\n".join(parts)
 
     async def _format_headquarters_context(self, context_snapshot: Dict) -> str:
@@ -330,6 +611,7 @@ class LLMService:
             f"- 当前快照周期内全部门店累计订单数：{summary.get('period_total_orders', 0)}单",
         ]
         parts.append("\n".join(summary_lines))
+        parts.append(self._format_headquarters_traffic_context(context_snapshot))
 
         rank_lines = ["最近一天按门店营业额排名："]
         for row in summary.get("store_sales_rank", []):
@@ -375,6 +657,9 @@ class LLMService:
         for item in snapshots:
             store = item.get("store") or {}
             snapshot = item.get("snapshot") or {}
+            traffic = item.get("traffic") or self._empty_traffic_summary(
+                self._format_int(store.get("store_id"))
+            )
             daily_sales = snapshot.get("daily_sales_list", [])
             inventory = snapshot.get("current_inventory", [])
             per_store_lines.append(
@@ -391,6 +676,27 @@ class LLMService:
                     )
             else:
                 per_store_lines.append("  当前库存明细：当前快照未提供")
+
+            if traffic.get("has_data"):
+                per_store_lines.append(
+                    "  客流汇总："
+                    f"进店={traffic.get('total_enter', 0)}人，"
+                    f"离店={traffic.get('total_leave', 0)}人，"
+                    f"净流入={traffic.get('net_flow', 0)}人，"
+                    f"批次={traffic.get('batch_count', 0)}，"
+                    f"时间范围={traffic.get('first_start_time', '')} 至 {traffic.get('last_end_time', '')}"
+                )
+                traffic_batches = traffic.get("recent_batches") or []
+                if traffic_batches:
+                    per_store_lines.append("  全部客流批次：")
+                    for batch in traffic_batches:
+                        per_store_lines.append(
+                            f"  - {batch.get('customer_start_time', '')} 至 {batch.get('customer_end_time', '')}："
+                            f"进店 {batch.get('customer_enter_total', 0)} 人，"
+                            f"离店 {batch.get('customer_leave_total', 0)} 人"
+                        )
+            else:
+                per_store_lines.append("  客流汇总：暂无客流历史数据")
 
             if daily_sales:
                 per_store_lines.append("  每日销售明细：")
@@ -424,7 +730,7 @@ class LLMService:
         history: List[Dict] = None,
         context_snapshot: Optional[Dict] = None,
     ) -> List[Dict]:
-        business_context = await self._build_business_context(store_id, context_snapshot)
+        business_context = await self._build_business_context(db, store_id, context_snapshot)
         expert_knowledge = await self._get_expert_knowledge(db)
 
         system_prompt = f"""你是 Aegis 智能零售经营分析助手，擅长基于门店销售、客流、库存和调拨数据回答经营问题。

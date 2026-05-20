@@ -151,6 +151,129 @@ class AiAnalysisAndChatService(AiAnalysisAndChatServiceServicer):
                 result.append({"date": sales_date, "value": float(sku_amount)})
         return result
 
+    def _analysis_to_forecast_item(self, analysis: AIAnalysis) -> GetSalesForecastResponse.ForecastItem:
+        data = analysis.analysis_data or {}
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+            except json.JSONDecodeError:
+                data = {}
+
+        prophet = data.get("prophet", {})
+        return GetSalesForecastResponse.ForecastItem(
+            sku_id=analysis.sku_id or 0,
+            sku_name=data.get("sku_name", ""),
+            target_date=data.get("target_date", ""),
+            predicted_sales=float(prophet.get("yhat", 0.0)),
+            predicted_lower=float(prophet.get("yhat_lower", 0.0)),
+            predicted_upper=float(prophet.get("yhat_upper", 0.0)),
+            trend=float(prophet.get("trend", 0.0)),
+            analysis_label=analysis.analysis_label or "",
+            strategy_key=analysis.strategy_key or "",
+            current_stock=int(data.get("current_stock", 0) or 0),
+            method=prophet.get("method", "unknown"),
+        )
+
+    def _forecast_item_from_analysis_data(
+        self,
+        sku_id: int,
+        analysis_label: str,
+        strategy_key: str,
+        analysis_data: dict,
+    ) -> GetSalesForecastResponse.ForecastItem:
+        prophet = analysis_data.get("prophet", {})
+        return GetSalesForecastResponse.ForecastItem(
+            sku_id=sku_id,
+            sku_name=analysis_data.get("sku_name", ""),
+            target_date=analysis_data.get("target_date", ""),
+            predicted_sales=float(prophet.get("yhat", 0.0)),
+            predicted_lower=float(prophet.get("yhat_lower", 0.0)),
+            predicted_upper=float(prophet.get("yhat_upper", 0.0)),
+            trend=float(prophet.get("trend", 0.0)),
+            analysis_label=analysis_label or "",
+            strategy_key=strategy_key or "",
+            current_stock=int(analysis_data.get("current_stock", 0) or 0),
+            method=prophet.get("method", "unknown"),
+        )
+
+    async def _generate_sales_forecasts(self, db, store_id: int, sku_id: int) -> list:
+        snapshot = await go_client.get_business_snapshot(store_id)
+        if not snapshot:
+            return []
+
+        inventory_map = {
+            int(item["sku_id"]): int(item.get("actual_quantity", 0) or 0)
+            for item in snapshot.get("current_inventory", [])
+        }
+        daily_sales = snapshot.get("daily_sales_list", [])
+
+        sales_sku_ids = set()
+        for day in daily_sales:
+            for detail in day.get("details", []):
+                if detail.get("sku_id"):
+                    sales_sku_ids.add(int(detail["sku_id"]))
+
+        if sku_id > 0:
+            target_sku_ids = [sku_id]
+        else:
+            target_sku_ids = sorted(set(inventory_map.keys()) | sales_sku_ids)
+
+        if not target_sku_ids:
+            return []
+
+        sku_dict = await go_client.get_sku_dictionary(target_sku_ids)
+        sku_name_map = {int(s["sku_id"]): s.get("sku_name", "") for s in sku_dict}
+
+        next_day = (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d")
+        forecasts = []
+
+        for target_sku_id in target_sku_ids:
+            historical_data = self._extract_historical_sales(daily_sales, target_sku_id)
+            if len(historical_data) < 7:
+                logger.info(
+                    "SKU %s has insufficient sales history for forecast: %s days",
+                    target_sku_id,
+                    len(historical_data),
+                )
+                continue
+
+            current_stock = inventory_map.get(target_sku_id, 0)
+            prediction = ProphetService.predict(historical_data, periods=1)
+            predicted_sales = float(prediction.get("yhat", 0.0))
+            analysis_label, strategy_key = ProphetService.determine_label(
+                predicted_sales,
+                current_stock,
+            )
+
+            analysis_data = {
+                "target_date": next_day,
+                "prophet": prediction,
+                "current_stock": current_stock,
+                "sku_name": sku_name_map.get(target_sku_id, ""),
+                "source": "on_demand_transfer_forecast",
+            }
+
+            db.add(
+                AIAnalysis(
+                    store_id=store_id,
+                    sku_id=target_sku_id,
+                    analysis_label=analysis_label,
+                    strategy_key=strategy_key,
+                    analysis_data=analysis_data,
+                )
+            )
+
+            forecasts.append(
+                self._forecast_item_from_analysis_data(
+                    target_sku_id,
+                    analysis_label,
+                    strategy_key,
+                    analysis_data,
+                )
+            )
+
+        return forecasts
+
     async def GetAnalysisReport(self, request, context):
         store_id = request.store_id
         sku_id = request.sku_id
@@ -266,31 +389,12 @@ class AiAnalysisAndChatService(AiAnalysisAndChatServiceServicer):
                 result = await db.execute(stmt)
                 analyses = result.scalars().all()
 
-                forecasts = []
-                for analysis in analyses:
-                    data = analysis.analysis_data or {}
-                    if isinstance(data, str):
-                        try:
-                            data = json.loads(data)
-                        except json.JSONDecodeError:
-                            data = {}
+                forecasts = [self._analysis_to_forecast_item(analysis) for analysis in analyses]
 
-                    prophet = data.get("prophet", {})
-
-                    item = GetSalesForecastResponse.ForecastItem(
-                        sku_id=analysis.sku_id,
-                        sku_name=data.get("sku_name", ""),
-                        target_date=data.get("target_date", ""),
-                        predicted_sales=prophet.get("yhat", 0.0),
-                        predicted_lower=prophet.get("yhat_lower", 0.0),
-                        predicted_upper=prophet.get("yhat_upper", 0.0),
-                        trend=prophet.get("trend", 0.0),
-                        analysis_label=analysis.analysis_label or "",
-                        strategy_key=analysis.strategy_key or "",
-                        current_stock=data.get("current_stock", 0),
-                        method=prophet.get("method", "unknown"),
-                    )
-                    forecasts.append(item)
+                if not forecasts:
+                    forecasts = await self._generate_sales_forecasts(db, store_id, sku_id)
+                    if forecasts:
+                        await db.commit()
 
                 return GetSalesForecastResponse(
                     code=0,

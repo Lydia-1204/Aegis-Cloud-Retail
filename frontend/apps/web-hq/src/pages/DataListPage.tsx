@@ -14,6 +14,7 @@ import {
   fetchSkus,
   fetchStoreById,
   fetchStores,
+  fetchTransferForecast,
   fetchTransfers,
   issueTransfer,
   fetchUsers,
@@ -1113,6 +1114,8 @@ export function TransfersPage() {
   });
   const [activeConfirmOrder, setActiveConfirmOrder] = useState<TransferOrder | null>(null);
   const [confirmForm, setConfirmForm] = useState({ detail_id: "", actual_qty: "" });
+  const [forecastSales, setForecastSales] = useState<number | null>(null);
+  const [forecastLoading, setForecastLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -1153,6 +1156,33 @@ export function TransfersPage() {
       setPage(1);
     } catch (err) {
       setError(parseError(err));
+    }
+  }
+
+  async function onFetchTransferForecast() {
+    setMessage("");
+    setError("");
+    setForecastSales(null);
+
+    const store_id = Number(createForm.store_id);
+    const sku_id = Number(createForm.sku_id);
+    if (!Number.isInteger(store_id) || store_id <= 0 || !Number.isInteger(sku_id) || sku_id <= 0) {
+      setError("请先填写有效的门店ID和 SKU ID");
+      return;
+    }
+
+    setForecastLoading(true);
+    try {
+      const forecast = await fetchTransferForecast(store_id, sku_id);
+      if (!forecast) {
+        setError("暂无可用预测数据");
+        return;
+      }
+      setForecastSales(forecast.predicted_sales);
+    } catch (err) {
+      setError(parseError(err));
+    } finally {
+      setForecastLoading(false);
     }
   }
 
@@ -1275,13 +1305,25 @@ export function TransfersPage() {
             <input
               placeholder="门店ID"
               value={createForm.store_id}
-              onChange={(e) => setCreateForm((s) => ({ ...s, store_id: e.target.value }))}
+              onChange={(e) => {
+                setForecastSales(null);
+                setCreateForm((s) => ({ ...s, store_id: e.target.value }));
+              }}
             />
             <input
               placeholder="SKU ID"
               value={createForm.sku_id}
-              onChange={(e) => setCreateForm((s) => ({ ...s, sku_id: e.target.value }))}
+              onChange={(e) => {
+                setForecastSales(null);
+                setCreateForm((s) => ({ ...s, sku_id: e.target.value }));
+              }}
             />
+            <button type="button" disabled={forecastLoading} onClick={() => void onFetchTransferForecast()}>
+              {forecastLoading ? "预测中" : "预测"}
+            </button>
+            {forecastSales !== null ? (
+              <p className="hint transfer-forecast-value">明日预测销量：{forecastSales}</p>
+            ) : null}
             <input
               placeholder="建议数量"
               value={createForm.suggested_qty}
