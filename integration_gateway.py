@@ -5,6 +5,7 @@ import httpx
 import websockets
 from fastapi import FastAPI, Request, Response, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 
 
 FOUNDATION_DATA_BASE = os.getenv("FOUNDATION_DATA_BASE_URL", "http://localhost:8081")
@@ -54,6 +55,71 @@ def route_for(path: str) -> str | None:
     return None
 
 
+def is_streaming_chat_request(path: str, method: str) -> bool:
+    return path == "/api/ai/chat/completions" and method.upper() == "POST"
+
+
+def proxied_headers(request: Request) -> dict[str, str]:
+    return {
+        key: value
+        for key, value in request.headers.items()
+        if key.lower() not in {"host", "content-length", "connection"}
+    }
+
+
+def target_url(base: str, full_path: str, request: Request) -> str:
+    target = f"{base}{full_path}"
+    if request.url.query:
+        target = f"{target}?{request.url.query}"
+    return target
+
+
+def filtered_response_headers(headers: httpx.Headers, streaming: bool = False) -> dict[str, str]:
+    excluded = {"content-encoding", "transfer-encoding", "connection"}
+    if streaming:
+        excluded.update({"content-length", "content-type"})
+    return {
+        key: value
+        for key, value in headers.items()
+        if key.lower() not in excluded
+    }
+
+
+async def proxy_streaming_http(
+    request: Request,
+    target: str,
+    headers: dict[str, str],
+    body: bytes,
+) -> StreamingResponse:
+    client = httpx.AsyncClient(timeout=None)
+    upstream_request = client.build_request(
+        request.method,
+        target,
+        headers=headers,
+        content=body,
+    )
+    try:
+        upstream = await client.send(upstream_request, stream=True)
+    except Exception:
+        await client.aclose()
+        raise
+
+    async def stream_body():
+        try:
+            async for chunk in upstream.aiter_raw():
+                yield chunk
+        finally:
+            await upstream.aclose()
+            await client.aclose()
+
+    return StreamingResponse(
+        stream_body(),
+        status_code=upstream.status_code,
+        headers=filtered_response_headers(upstream.headers, streaming=True),
+        media_type=upstream.headers.get("content-type", "text/event-stream"),
+    )
+
+
 @app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
 async def proxy_http(path: str, request: Request) -> Response:
     full_path = "/" + path
@@ -65,14 +131,11 @@ async def proxy_http(path: str, request: Request) -> Response:
         return Response(content=f"No route for {full_path}", status_code=404)
 
     body = await request.body()
-    headers = {
-        key: value
-        for key, value in request.headers.items()
-        if key.lower() not in {"host", "content-length", "connection"}
-    }
-    target = f"{base}{full_path}"
-    if request.url.query:
-        target = f"{target}?{request.url.query}"
+    headers = proxied_headers(request)
+    target = target_url(base, full_path, request)
+
+    if is_streaming_chat_request(full_path, request.method):
+        return await proxy_streaming_http(request, target, headers, body)
 
     async with httpx.AsyncClient(timeout=None) as client:
         upstream = await client.request(
@@ -82,14 +145,10 @@ async def proxy_http(path: str, request: Request) -> Response:
             content=body,
         )
 
-    excluded = {"content-encoding", "transfer-encoding", "connection"}
-    response_headers = {
-        key: value for key, value in upstream.headers.items() if key.lower() not in excluded
-    }
     return Response(
         content=upstream.content,
         status_code=upstream.status_code,
-        headers=response_headers,
+        headers=filtered_response_headers(upstream.headers),
         media_type=upstream.headers.get("content-type"),
     )
 

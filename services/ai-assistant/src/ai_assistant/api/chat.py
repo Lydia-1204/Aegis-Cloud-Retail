@@ -167,23 +167,21 @@ async def chat_completions(
 
     context_snapshot_data = await _build_context_snapshot(db, req.store_id)
     context_snapshot = json.dumps(context_snapshot_data, ensure_ascii=False, default=str)
-    final_prompt = await llm_service.get_final_prompt(
+    prompt_messages = await llm_service.build_prompt_messages(
         db,
         req.store_id,
         req.query,
         history,
         context_snapshot_data,
     )
+    final_prompt = str(prompt_messages)
 
     async def generate_response():
         full_response = ""
 
-        async for chunk in llm_service.chat_completion_stream(
-            db,
-            req.store_id,
+        async for chunk in llm_service.chat_completion_stream_from_messages(
+            prompt_messages,
             req.query,
-            history,
-            context_snapshot_data,
         ):
             if not chunk:
                 continue
