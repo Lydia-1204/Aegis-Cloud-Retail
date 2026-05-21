@@ -766,6 +766,16 @@ class LLMService:
 
         return messages
 
+    async def build_prompt_messages(
+        self,
+        db: AsyncSession,
+        store_id: int,
+        query: str,
+        history: List[Dict] = None,
+        context_snapshot: Optional[Dict] = None,
+    ) -> List[Dict]:
+        return await self._build_prompt(db, store_id, query, history, context_snapshot)
+
     async def chat_completion(
         self,
         db: AsyncSession,
@@ -805,7 +815,14 @@ class LLMService:
         context_snapshot: Optional[Dict] = None,
     ) -> AsyncGenerator[str, None]:
         messages = await self._build_prompt(db, store_id, query, history, context_snapshot)
+        async for chunk in self.chat_completion_stream_from_messages(messages, query):
+            yield chunk
 
+    async def chat_completion_stream_from_messages(
+        self,
+        messages: List[Dict],
+        fallback_query: str,
+    ) -> AsyncGenerator[str, None]:
         try:
             if self.client is None:
                 raise RuntimeError("LLM client is not configured")
@@ -825,7 +842,7 @@ class LLMService:
             logger.warning("LLM chat completion stream failed: %s", e)
             mock_response = (
                 "由于 LLM API 调用异常，暂时无法生成完整智能分析。\n\n"
-                f"用户问题：{query}\n\n"
+                f"用户问题：{fallback_query}\n\n"
                 "请稍后重试，或查看系统注入的门店经营数据进行人工核对。"
             )
             async for chunk in self._mock_stream_response(mock_response):
