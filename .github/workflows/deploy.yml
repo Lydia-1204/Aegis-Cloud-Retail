@@ -101,9 +101,10 @@ jobs:
                 ;;
               deploy/nginx.conf)
                 deploy_needed=true
+                build_frontend=true
                 changed_nginx=true
                 ;;
-              docker-compose.yml|deploy/docker-compose.prod.yml|deploy/remote-deploy.sh|docker/db-seed.sh|database/*|configs/*)
+              .github/workflows/deploy.yml|docker-compose.yml|deploy/docker-compose.prod.yml|deploy/remote-deploy.sh|docker/db-seed.sh|database/*|configs/*)
                 deploy_needed=true
                 full_deploy=true
                 ;;
