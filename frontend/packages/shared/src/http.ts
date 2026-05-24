@@ -31,7 +31,14 @@ export function withQuery(
 }
 
 async function parseResponse<T>(res: Response): Promise<ApiResponse<T>> {
-  const payload = (await res.json()) as ApiResponse<T>;
+  const raw = await res.text();
+  let payload: ApiResponse<T>;
+  try {
+    payload = JSON.parse(raw) as ApiResponse<T>;
+  } catch {
+    const message = raw.trim() || `HTTP ${res.status}`;
+    throw new HttpError(res.status, message);
+  }
   if (!res.ok || payload.code !== 0) {
     throw new HttpError(res.status, payload.message || "请求失败");
   }

@@ -1118,6 +1118,9 @@ export function TransfersPage() {
   const [currentStock, setCurrentStock] = useState<number | null>(null);
   const [suggestedTransferQty, setSuggestedTransferQty] = useState<number | null>(null);
   const [forecastLoading, setForecastLoading] = useState(false);
+  const [createOptionsLoading, setCreateOptionsLoading] = useState(false);
+  const [createStoreOptions, setCreateStoreOptions] = useState<Store[]>([]);
+  const [createSkuOptions, setCreateSkuOptions] = useState<SKU[]>([]);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -1137,6 +1140,36 @@ export function TransfersPage() {
   useEffect(() => {
     void loadTransfers();
   }, [page, limit, storeId, status, startDate, endDate]);
+
+  useEffect(() => {
+    let active = true;
+    async function loadCreateOptions() {
+      setCreateOptionsLoading(true);
+      try {
+        const [storesRes, skusRes] = await Promise.all([
+          fetchStores({ page: 1, limit: 100, store_status: "active" }),
+          fetchSkus({ page: 1, limit: 100 }),
+        ]);
+        if (!active) {
+          return;
+        }
+        setCreateStoreOptions(storesRes.data.filter((x) => x.store_status === "active"));
+        setCreateSkuOptions(skusRes.data.filter((x) => x.sku_status === "sale"));
+      } catch (err) {
+        if (active) {
+          setError(parseError(err));
+        }
+      } finally {
+        if (active) {
+          setCreateOptionsLoading(false);
+        }
+      }
+    }
+    void loadCreateOptions();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   async function onCreateTransfer() {
     setMessage("");
@@ -1396,8 +1429,7 @@ export function TransfersPage() {
         <div className="op-card">
           <h3>新建调拨</h3>
           <div className="form-grid">
-            <input
-              placeholder="门店ID"
+            <select
               value={createForm.store_id}
               onChange={(e) => {
                 setForecastSales(null);
@@ -1405,9 +1437,15 @@ export function TransfersPage() {
                 setSuggestedTransferQty(null);
                 setCreateForm((s) => ({ ...s, store_id: e.target.value, actual_qty: "" }));
               }}
-            />
-            <input
-              placeholder="SKU ID"
+            >
+              <option value="">{createOptionsLoading ? "加载门店中..." : "选择门店"}</option>
+              {createStoreOptions.map((x) => (
+                <option key={x.store_id} value={String(x.store_id)}>
+                  {x.store_id} - {x.store_name}
+                </option>
+              ))}
+            </select>
+            <select
               value={createForm.sku_id}
               onChange={(e) => {
                 setForecastSales(null);
@@ -1415,7 +1453,14 @@ export function TransfersPage() {
                 setSuggestedTransferQty(null);
                 setCreateForm((s) => ({ ...s, sku_id: e.target.value, actual_qty: "" }));
               }}
-            />
+            >
+              <option value="">{createOptionsLoading ? "加载SKU中..." : "选择SKU"}</option>
+              {createSkuOptions.map((x) => (
+                <option key={x.sku_id} value={String(x.sku_id)}>
+                  {x.sku_id} - {x.sku_name}
+                </option>
+              ))}
+            </select>
             <button type="button" disabled={forecastLoading} onClick={() => void onFetchTransferForecast()}>
               {forecastLoading ? "预测中" : "预测"}
             </button>

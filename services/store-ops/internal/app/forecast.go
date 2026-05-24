@@ -265,14 +265,13 @@ func (s *Server) handleTransferForecast(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	if err := s.insertForecastDiagnosis(r.Context(), storeID, forecast); err != nil {
-		writeJSON(w, http.StatusInternalServerError, response{Code: 5001, Message: "预测结果落库失败", Data: nil})
-		return
+		log.Printf("transfer forecast diagnosis insert failed store=%d sku=%d err=%v", storeID, skuID, err)
 	}
 
 	currentStock, err := s.currentInventoryQuantity(r.Context(), storeID, skuID)
 	if err != nil {
-		writeJSON(w, http.StatusInternalServerError, response{Code: 5001, Message: "库存查询失败", Data: nil})
-		return
+		log.Printf("transfer forecast inventory query failed store=%d sku=%d err=%v", storeID, skuID, err)
+		currentStock = 0
 	}
 	predictedSales := displayForecastSales(forecast.PredictedSales)
 	writeJSON(w, http.StatusOK, response{Code: 0, Message: "success", Data: transferForecastResponse{

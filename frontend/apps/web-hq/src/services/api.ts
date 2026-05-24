@@ -588,7 +588,13 @@ async function patchTransfer<TReq extends object, TRes>(
     },
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
-  const payloadRes = (await res.json()) as ApiResponse<TRes | null>;
+  const raw = await res.text();
+  let payloadRes: ApiResponse<TRes | null>;
+  try {
+    payloadRes = JSON.parse(raw) as ApiResponse<TRes | null>;
+  } catch {
+    throw new HttpError(res.status, raw.trim() || "请求失败");
+  }
   if (!res.ok || payloadRes.code !== 0 || (!allowNullData && payloadRes.data === null)) {
     throw new HttpError(res.status, payloadRes.message || "请求失败");
   }
