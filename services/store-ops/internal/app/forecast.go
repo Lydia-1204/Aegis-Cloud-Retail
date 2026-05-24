@@ -51,6 +51,8 @@ type aiForecastDescriptors struct {
 type transferForecastResponse struct {
 	TargetDate     string `json:"target_date"`
 	PredictedSales int    `json:"predicted_sales"`
+	CurrentStock   int    `json:"current_stock"`
+	SuggestedQty   int    `json:"suggested_qty"`
 }
 
 func newAIForecastClient(addrs []string) (*aiForecastClient, error) {
@@ -267,9 +269,17 @@ func (s *Server) handleTransferForecast(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 
+	currentStock, err := s.currentInventoryQuantity(r.Context(), storeID, skuID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, response{Code: 5001, Message: "库存查询失败", Data: nil})
+		return
+	}
+	predictedSales := displayForecastSales(forecast.PredictedSales)
 	writeJSON(w, http.StatusOK, response{Code: 0, Message: "success", Data: transferForecastResponse{
 		TargetDate:     forecast.TargetDate,
-		PredictedSales: displayForecastSales(forecast.PredictedSales),
+		PredictedSales: predictedSales,
+		CurrentStock:   currentStock,
+		SuggestedQty:   suggestedTransferQty(predictedSales, currentStock),
 	}})
 }
 
@@ -305,6 +315,28 @@ func displayForecastSales(value float64) int {
 		return 0
 	}
 	return int(math.Round(value))
+}
+
+func suggestedTransferQty(predictedSales, currentStock int) int {
+	if predictedSales <= currentStock {
+		return 0
+	}
+	return predictedSales - currentStock
+}
+
+func (s *Server) currentInventoryQuantity(ctx context.Context, storeID, skuID int64) (int, error) {
+	var qty int
+	err := s.db.QueryRowContext(ctx, `
+SELECT actual_quantity
+FROM inventories
+WHERE store_id = $1 AND sku_id = $2`, storeID, skuID).Scan(&qty)
+	if err == sql.ErrNoRows {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	return qty, nil
 }
 
 func (s *Server) insertForecastDiagnosis(ctx context.Context, storeID int64, forecast salesForecast) error {

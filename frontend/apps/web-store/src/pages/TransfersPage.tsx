@@ -81,6 +81,42 @@ export function TransfersPage() {
     }
   }
 
+  function renderTransferActions(row: TransferOrder) {
+    if (row.status === "issued_pending_confirmation") {
+      return (
+        <>
+          <button
+            type="button"
+            className="inventory-action-btn"
+            onClick={() => void onAcknowledge(row.order_id)}
+          >
+            确认执行
+          </button>
+          <button
+            type="button"
+            className="inventory-action-btn"
+            onClick={() => {
+              setFeedbackOrderId(row.order_id);
+              setFeedbackText("");
+            }}
+          >
+            发起异议
+          </button>
+        </>
+      );
+    }
+
+    if (row.status === "in_negotiation") {
+      return <span>等待总部重新修改</span>;
+    }
+
+    if (row.status === "confirmed_executed" || row.status === "cancelled") {
+      return <span>无需操作</span>;
+    }
+
+    return <span>等待总部处理</span>;
+  }
+
   return (
     <section>
       <h2>调拨确认</h2>
@@ -146,25 +182,7 @@ export function TransfersPage() {
                   <td>{TRANSFER_STATUS_LABELS[row.status]}</td>
                   <td>{row.feedback ?? "-"}</td>
                   <td>{row.details.length}</td>
-                  <td>
-                    <button
-                      type="button"
-                      className="inventory-action-btn"
-                      onClick={() => onAcknowledge(row.order_id)}
-                    >
-                      确认接单
-                    </button>
-                    <button
-                      type="button"
-                      className="inventory-action-btn"
-                      onClick={() => {
-                        setFeedbackOrderId(row.order_id);
-                        setFeedbackText("");
-                      }}
-                    >
-                      发起异议
-                    </button>
-                  </td>
+                  <td>{renderTransferActions(row)}</td>
                 </tr>
               ))
             )}

@@ -559,9 +559,13 @@ export async function fetchTransferForecast(store_id: number, sku_id: number): P
   if (useMock) {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
+    const predicted_sales = Math.max(1, Math.round(18 + (store_id % 5) * 3 + (sku_id % 11)));
+    const mockStock = store_id === 1 && sku_id === 101 ? 23 : store_id === 1 && sku_id === 103 ? 8 : 0;
     return {
       target_date: tomorrow.toISOString().slice(0, 10),
-      predicted_sales: Math.max(1, Math.round(18 + (store_id % 5) * 3 + (sku_id % 11))),
+      predicted_sales,
+      current_stock: mockStock,
+      suggested_qty: Math.max(predicted_sales - mockStock, 0),
     };
   }
   return authedHttp().getOne<TransferForecast | null>(
@@ -572,7 +576,7 @@ export async function fetchTransferForecast(store_id: number, sku_id: number): P
 
 async function patchTransfer<TReq extends object, TRes>(
   order_id: number,
-  action: "issue" | "confirm" | "cancel",
+  action: "approve" | "issue" | "confirm" | "cancel",
   body?: TReq,
   allowNullData = false
 ): Promise<TRes> {
@@ -589,6 +593,14 @@ async function patchTransfer<TReq extends object, TRes>(
     throw new HttpError(res.status, payloadRes.message || "请求失败");
   }
   return payloadRes.data as TRes;
+}
+
+export async function approveTransfer(order_id: number): Promise<TransferOrder> {
+  if (useMock) {
+    const res = await mockApi.approveTransfer(order_id);
+    return unwrapMockEnvelope(res);
+  }
+  return patchTransfer<{}, TransferOrder>(order_id, "approve");
 }
 
 export async function issueTransfer(order_id: number): Promise<TransferOrder> {

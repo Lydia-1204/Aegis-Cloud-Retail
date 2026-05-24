@@ -58,6 +58,8 @@ func (s *Server) handleTransferAction(w http.ResponseWriter, r *http.Request, us
 		return
 	}
 	switch action {
+	case "approve":
+		s.handleApproveTransfer(w, r, user, orderID)
 	case "issue":
 		s.handleIssueTransfer(w, r, user, orderID)
 	case "acknowledge":
@@ -191,6 +193,18 @@ func (s *Server) handleCreateTransfer(w http.ResponseWriter, r *http.Request, us
 	writeJSON(w, http.StatusOK, response{Code: 0, Message: "调拨单创建成功", Data: data})
 }
 
+func (s *Server) handleApproveTransfer(w http.ResponseWriter, r *http.Request, user authUser, orderID int64) {
+	if !requireHead(w, user) {
+		return
+	}
+	data, err := s.transitionTransfer(r.Context(), orderID, []string{statusAIGenerated}, statusPendingApproval, nil, false)
+	if err != nil {
+		writeTransferActionError(w, err, "审核")
+		return
+	}
+	writeJSON(w, http.StatusOK, response{Code: 0, Message: "调拨单已审核，等待总部下发", Data: data})
+}
+
 func (s *Server) handleIssueTransfer(w http.ResponseWriter, r *http.Request, user authUser, orderID int64) {
 	if !requireHead(w, user) {
 		return
@@ -244,12 +258,12 @@ func (s *Server) handleConfirmTransfer(w http.ResponseWriter, r *http.Request, u
 	if !ok {
 		return
 	}
-	data, err := s.transitionTransfer(r.Context(), orderID, []string{statusInNegotiation}, statusIssuedPendingConfirmation, updates, false)
+	data, err := s.transitionTransfer(r.Context(), orderID, []string{statusInNegotiation}, statusPendingApproval, updates, false)
 	if err != nil {
 		writeTransferActionError(w, err, "协商确认")
 		return
 	}
-	writeJSON(w, http.StatusOK, response{Code: 0, Message: "已修改调拨数量并重新下发，等待门店确认", Data: data})
+	writeJSON(w, http.StatusOK, response{Code: 0, Message: "已修改调拨数量，等待总部下发", Data: data})
 }
 
 func (s *Server) handleCancelTransfer(w http.ResponseWriter, r *http.Request, user authUser, orderID int64) {
@@ -285,7 +299,7 @@ func validTransferCreate(req transferCreateReq) bool {
 		return false
 	}
 	for _, d := range req.Details {
-		if d.SKUID <= 0 || d.SuggestedQty <= 0 || d.ActualQty < 0 || (d.TransferDirection != "H2S" && d.TransferDirection != "S2H") {
+		if d.SKUID <= 0 || d.SuggestedQty < 0 || d.ActualQty < 0 || (d.TransferDirection != "H2S" && d.TransferDirection != "S2H") {
 			return false
 		}
 	}

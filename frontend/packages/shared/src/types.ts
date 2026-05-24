@@ -344,6 +344,8 @@ export interface TransferCreateReq {
 export interface TransferForecast {
   target_date: string;
   predicted_sales: number;
+  current_stock: number;
+  suggested_qty: number;
 }
 
 export interface AcknowledgeReq {
