@@ -1111,6 +1111,7 @@ export function TransfersPage() {
     actual_qty: "",
     transfer_direction: "H2S" as "H2S" | "S2H",
   });
+  const [activeDetailOrder, setActiveDetailOrder] = useState<TransferOrder | null>(null);
   const [activeConfirmOrder, setActiveConfirmOrder] = useState<TransferOrder | null>(null);
   const [confirmForm, setConfirmForm] = useState({ detail_id: "", actual_qty: "" });
   const [forecastSales, setForecastSales] = useState<number | null>(null);
@@ -1122,6 +1123,21 @@ export function TransfersPage() {
   const [createSkuOptions, setCreateSkuOptions] = useState<SKU[]>([]);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+
+  function isTransferTargetStore(store: Store) {
+    const code = store.store_code.trim().toUpperCase();
+    const name = store.store_name.trim();
+    if (store.store_id === 0) {
+      return false;
+    }
+    if (code === "HQ") {
+      return false;
+    }
+    if (name.includes("总部")) {
+      return false;
+    }
+    return store.store_status === "active";
+  }
 
   async function loadTransfers(targetPage = page) {
     const res = await fetchTransfers({
@@ -1145,14 +1161,37 @@ export function TransfersPage() {
     async function loadCreateOptions() {
       setCreateOptionsLoading(true);
       try {
-        const [storesRes, skusRes] = await Promise.all([
-          fetchStores({ page: 1, limit: 100, store_status: "active" }),
-          fetchSkus({ page: 1, limit: 100 }),
-        ]);
+        const storeLimit = 200;
+        const firstStorePage = await fetchStores({ page: 1, limit: storeLimit, store_status: "active" });
+        const allStores = [...firstStorePage.data];
+        const totalStorePages =
+          firstStorePage.limit > 0 ? Math.max(1, Math.ceil(firstStorePage.total / firstStorePage.limit)) : 1;
+        if (totalStorePages > 1) {
+          const restStorePages = await Promise.all(
+            Array.from({ length: totalStorePages - 1 }, (_, idx) =>
+              fetchStores({ page: idx + 2, limit: storeLimit, store_status: "active" })
+            )
+          );
+          for (const pageData of restStorePages) {
+            allStores.push(...pageData.data);
+          }
+        }
+
+        const skusRes = await fetchSkus({ page: 1, limit: 100 });
         if (!active) {
           return;
         }
-        setCreateStoreOptions(storesRes.data.filter((x) => x.store_status === "active"));
+        const uniqueStoreMap = new Map<number, Store>();
+        for (const store of allStores) {
+          if (!uniqueStoreMap.has(store.store_id)) {
+            uniqueStoreMap.set(store.store_id, store);
+          }
+        }
+        setCreateStoreOptions(
+          Array.from(uniqueStoreMap.values())
+            .filter(isTransferTargetStore)
+            .sort((a, b) => a.store_id - b.store_id)
+        );
         setCreateSkuOptions(skusRes.data.filter((x) => x.sku_status === "sale"));
       } catch (err) {
         if (active) {
@@ -1337,6 +1376,9 @@ export function TransfersPage() {
   function renderTransferActions(order: TransferOrder) {
     return (
       <div className="row-action">
+        <button type="button" onClick={() => setActiveDetailOrder(order)}>
+          详情
+        </button>
         {order.status === "ai_generated" ? (
           <button type="button" onClick={() => void onApproveTransfer(order.order_id)}>
             审核
@@ -1536,6 +1578,57 @@ export function TransfersPage() {
         onPrev={() => setPage((p) => p - 1)}
         onNext={() => setPage((p) => p + 1)}
       />
+
+      {activeDetailOrder ? (
+        <div className="hq-modal-overlay" role="dialog" aria-modal="true">
+          <div className="hq-modal-dialog">
+            <div className="hq-modal-header">
+              <h3>调拨单详情</h3>
+              <button type="button" onClick={() => setActiveDetailOrder(null)} className="hq-modal-close">
+                关闭
+              </button>
+            </div>
+            <div className="hq-modal-body">
+              <p className="hint">调拨单号：{activeDetailOrder.order_id}</p>
+              <p className="hint">门店：{activeDetailOrder.store_name}</p>
+              <p className="hint">状态：{TRANSFER_STATUS_LABELS[activeDetailOrder.status]}</p>
+              <p className="hint">门店异议：{activeDetailOrder.feedback ?? "-"}</p>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>明细ID</th>
+                      <th>商品</th>
+                      <th>预测建议调拨量</th>
+                      <th>实际调拨量</th>
+                      <th>方向</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {activeDetailOrder.details.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="empty">
+                          暂无明细
+                        </td>
+                      </tr>
+                    ) : (
+                      activeDetailOrder.details.map((detail) => (
+                        <tr key={detail.detail_id}>
+                          <td>{detail.detail_id}</td>
+                          <td>{detail.sku_name}</td>
+                          <td>{detail.suggested_qty}</td>
+                          <td>{detail.actual_qty}</td>
+                          <td>{TRANSFER_DIRECTION_LABELS[detail.transfer_direction]}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {activeConfirmOrder ? (
         <div className="hq-modal-overlay" role="dialog" aria-modal="true">
