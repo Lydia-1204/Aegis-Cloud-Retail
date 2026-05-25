@@ -3,7 +3,6 @@ import { formatBeijingDateTime } from "@aegis/shared";
 import type { SKU, SKUCategory, Store, TransferOrder, User } from "@aegis/shared";
 import {
   approveTransfer,
-  cancelTransfer,
   confirmTransfer,
   createTransfer,
   createSku,
@@ -1176,7 +1175,8 @@ export function TransfersPage() {
     setError("");
     const store_id = Number(createForm.store_id);
     const sku_id = Number(createForm.sku_id);
-    const actual_qty = createForm.actual_qty.trim() ? Number(createForm.actual_qty) : suggestedTransferQty;
+    const actualRaw = createForm.actual_qty.trim();
+    const actual_qty = Number(actualRaw);
     if (forecastSales == null || suggestedTransferQty == null || !Number.isInteger(suggestedTransferQty) || suggestedTransferQty < 0) {
       setError("请先点击预测，生成 AI 建议调拨量后再创建调拨单");
       return;
@@ -1185,7 +1185,11 @@ export function TransfersPage() {
       setError("请填写有效的门店ID和 SKU ID");
       return;
     }
-    if (actual_qty == null || !Number.isInteger(actual_qty) || actual_qty < 0) {
+    if (!actualRaw) {
+      setError("请填写实际数量");
+      return;
+    }
+    if (!Number.isInteger(actual_qty) || actual_qty < 0) {
       setError("实际数量必须是大于等于 0 的整数");
       return;
     }
@@ -1317,19 +1321,13 @@ export function TransfersPage() {
             : undefined,
       });
       setActiveConfirmOrder(null);
-      setMessage(`调拨单 ${order_id} 已重新修改，回到待审核`);
-      await loadTransfers();
-    } catch (err) {
-      setError(parseError(err));
-    }
-  }
-
-  async function onCancelTransfer(order_id: number) {
-    setMessage("");
-    setError("");
-    try {
-      await cancelTransfer(order_id);
-      setMessage(`调拨单 ${order_id} 已作废`);
+      try {
+        await issueTransfer(order_id);
+        setMessage(`调拨单 ${order_id} 已协商并重新下发`);
+      } catch (issueErr) {
+        setError(parseError(issueErr));
+        setMessage(`调拨单 ${order_id} 已完成协商修改，待手动下发`);
+      }
       await loadTransfers();
     } catch (err) {
       setError(parseError(err));
@@ -1337,11 +1335,6 @@ export function TransfersPage() {
   }
 
   function renderTransferActions(order: TransferOrder) {
-    const canCancel =
-      order.status === "pending_approval" ||
-      order.status === "issued_pending_confirmation" ||
-      order.status === "in_negotiation";
-
     return (
       <div className="row-action">
         {order.status === "ai_generated" ? (
@@ -1356,12 +1349,7 @@ export function TransfersPage() {
         ) : null}
         {order.status === "in_negotiation" ? (
           <button type="button" onClick={() => openConfirmModal(order)}>
-            重新修改
-          </button>
-        ) : null}
-        {canCancel ? (
-          <button type="button" onClick={() => void onCancelTransfer(order.order_id)}>
-            取消
+            协商后下发
           </button>
         ) : null}
         {order.status === "confirmed_executed" || order.status === "cancelled" ? <span>无需操作</span> : null}
@@ -1377,7 +1365,7 @@ export function TransfersPage() {
       {error ? <p className="error-text">{error}</p> : null}
       <div className="query-bar">
         <input
-          placeholder="门店ID"
+          placeholder="筛选门店ID（可选）"
           value={storeId}
           onChange={(e) => {
             setPage(1);
@@ -1461,7 +1449,11 @@ export function TransfersPage() {
                 </option>
               ))}
             </select>
-            <button type="button" disabled={forecastLoading} onClick={() => void onFetchTransferForecast()}>
+            <button
+              type="button"
+              disabled={forecastLoading || !createForm.store_id || !createForm.sku_id}
+              onClick={() => void onFetchTransferForecast()}
+            >
               {forecastLoading ? "预测中" : "预测"}
             </button>
             {forecastSales !== null ? (
@@ -1487,7 +1479,11 @@ export function TransfersPage() {
               <option value="H2S">{TRANSFER_DIRECTION_LABELS.H2S}</option>
               <option value="S2H">{TRANSFER_DIRECTION_LABELS.S2H}</option>
             </select>
-            <button type="button" onClick={onCreateTransfer}>
+            <button
+              type="button"
+              disabled={!createForm.store_id || !createForm.sku_id || suggestedTransferQty === null || !createForm.actual_qty.trim()}
+              onClick={onCreateTransfer}
+            >
               创建
             </button>
           </div>
@@ -1612,7 +1608,7 @@ export function TransfersPage() {
 
               <div className="hq-modal-actions">
                 <button type="button" onClick={() => void onConfirmTransfer(activeConfirmOrder.order_id)}>
-                  保存修改并回到待审核
+                  协商后下发
                 </button>
               </div>
             </div>
