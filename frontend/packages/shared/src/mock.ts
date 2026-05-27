@@ -953,6 +953,16 @@ export class AegisMockApi {
     return ok(mockTransfers[idx], message);
   }
 
+  public async approveTransfer(order_id: number): Promise<ApiResponse<TransferOrder | null>> {
+    await sleep(120);
+    return this.updateTransferStatus(
+      order_id,
+      ["ai_generated"],
+      "pending_approval",
+      "调拨单已审核，等待总部下发"
+    );
+  }
+
   public async issueTransfer(order_id: number): Promise<ApiResponse<TransferOrder | null>> {
     await sleep(120);
     return this.updateTransferStatus(
@@ -1020,8 +1030,8 @@ export class AegisMockApi {
     const result = this.updateTransferStatus(
       order_id,
       ["in_negotiation"],
-      "issued_pending_confirmation",
-      "已修改调拨数量并重新下发，等待门店确认"
+      "pending_approval",
+      "已修改调拨数量，等待总部下发"
     );
     if (result.code !== 0 || !result.data) {
       return result;

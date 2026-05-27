@@ -29,6 +29,7 @@ export function TransfersPage() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [feedbackOrderId, setFeedbackOrderId] = useState<number | null>(null);
+  const [detailOrder, setDetailOrder] = useState<TransferOrder | null>(null);
   const [feedbackText, setFeedbackText] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -79,6 +80,68 @@ export function TransfersPage() {
     } catch (err) {
       setError(parseError(err));
     }
+  }
+
+  function renderTransferActions(row: TransferOrder) {
+    const detailButton = (
+      <button
+        type="button"
+        className="inventory-action-btn"
+        onClick={() => setDetailOrder(row)}
+      >
+        详情
+      </button>
+    );
+
+    if (row.status === "issued_pending_confirmation") {
+      return (
+        <>
+          {detailButton}
+          <button
+            type="button"
+            className="inventory-action-btn"
+            onClick={() => void onAcknowledge(row.order_id)}
+          >
+            确认执行
+          </button>
+          <button
+            type="button"
+            className="inventory-action-btn"
+            onClick={() => {
+              setFeedbackOrderId(row.order_id);
+              setFeedbackText("");
+            }}
+          >
+            发起异议
+          </button>
+        </>
+      );
+    }
+
+    if (row.status === "in_negotiation") {
+      return (
+        <>
+          {detailButton}
+          <span>等待总部重新修改</span>
+        </>
+      );
+    }
+
+    if (row.status === "confirmed_executed" || row.status === "cancelled") {
+      return (
+        <>
+          {detailButton}
+          <span>无需操作</span>
+        </>
+      );
+    }
+
+    return (
+      <>
+        {detailButton}
+        <span>等待总部处理</span>
+      </>
+    );
   }
 
   return (
@@ -146,25 +209,7 @@ export function TransfersPage() {
                   <td>{TRANSFER_STATUS_LABELS[row.status]}</td>
                   <td>{row.feedback ?? "-"}</td>
                   <td>{row.details.length}</td>
-                  <td>
-                    <button
-                      type="button"
-                      className="inventory-action-btn"
-                      onClick={() => onAcknowledge(row.order_id)}
-                    >
-                      确认接单
-                    </button>
-                    <button
-                      type="button"
-                      className="inventory-action-btn"
-                      onClick={() => {
-                        setFeedbackOrderId(row.order_id);
-                        setFeedbackText("");
-                      }}
-                    >
-                      发起异议
-                    </button>
-                  </td>
+                  <td>{renderTransferActions(row)}</td>
                 </tr>
               ))
             )}
@@ -178,6 +223,44 @@ export function TransfersPage() {
         onPrev={() => setPage((p) => p - 1)}
         onNext={() => setPage((p) => p + 1)}
       />
+      {detailOrder ? (
+        <ModalShell title={`调拨单详情 - #${detailOrder.order_id}`} onClose={() => setDetailOrder(null)}>
+          <p className="hint">状态：{TRANSFER_STATUS_LABELS[detailOrder.status]}</p>
+          <p className="hint">门店异议：{detailOrder.feedback ?? "-"}</p>
+          <div className="table-container transfers-table-container">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>明细ID</th>
+                  <th>商品</th>
+                  <th>预测建议调拨量</th>
+                  <th>实际调拨量</th>
+                  <th>方向</th>
+                </tr>
+              </thead>
+              <tbody>
+                {detailOrder.details.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="inventory-empty-cell">
+                      暂无明细
+                    </td>
+                  </tr>
+                ) : (
+                  detailOrder.details.map((d) => (
+                    <tr key={d.detail_id}>
+                      <td>{d.detail_id}</td>
+                      <td>{d.sku_name}</td>
+                      <td>{d.suggested_qty}</td>
+                      <td>{d.actual_qty}</td>
+                      <td>{d.transfer_direction}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </ModalShell>
+      ) : null}
       {feedbackOrderId ? (
         <ModalShell title={`异议 - 调拨单号 ${feedbackOrderId}`} onClose={() => setFeedbackOrderId(null)}>
           <div className="form-grid">
