@@ -678,6 +678,45 @@ th {
   word-break: break-word;
 }
 
+.chat-text {
+  display: grid;
+  gap: 8px;
+  line-height: 1.7;
+  word-break: break-word;
+}
+
+.chat-text h4,
+.chat-text p,
+.chat-text ul,
+.chat-text ol {
+  margin: 0;
+}
+
+.chat-text h4 {
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.chat-text ul,
+.chat-text ol {
+  padding-left: 20px;
+  display: grid;
+  gap: 4px;
+}
+
+.chat-code-block {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #0f172a;
+  color: #e5e7eb;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .chat-message.from-user {
   margin-left: auto;
   background: #ecfdf5;
