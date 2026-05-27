@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { formatBeijingDateTime } from "@aegis/shared";
 import type { ChatMessage, ChatSessionItem } from "@aegis/shared";
 import { useAuth } from "../auth/AuthContext";
+import { ChatText } from "../components/ChatText";
 import { fetchChatHistory, fetchChatSessions, streamChatCompletions } from "../services/api";
 
 function parseError(err: unknown): string {
@@ -152,7 +153,7 @@ export function ChatPage() {
                 <strong>{msg.role === "user" ? "你" : "助手"}</strong>
                 <span>{formatBeijingDateTime(msg.chat_time)}</span>
               </header>
-              <p>{msg.content}</p>
+              {msg.role === "assistant" ? <ChatText content={msg.content} /> : <p>{msg.content}</p>}
             </article>
           ))}
           {streamingContent ? (
@@ -161,7 +162,7 @@ export function ChatPage() {
                 <strong>助手</strong>
                 <span>streaming</span>
               </header>
-              <p>{streamingContent}</p>
+              <ChatText content={streamingContent} />
             </article>
           ) : null}
         </div>
