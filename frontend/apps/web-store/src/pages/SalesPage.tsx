@@ -56,6 +56,11 @@ function FieldLabel({
   );
 }
 
+function confirmDetailed(title: string, details: Array<[string, string | number | null | undefined]>): boolean {
+  const body = details.map(([label, value]) => `${label}：${value ?? "-"}`).join("\n");
+  return window.confirm(`${title}\n\n${body}\n\n确认继续操作吗？`);
+}
+
 export function SalesPage() {
   const { me } = useAuth();
   const [rows, setRows] = useState<SalesDaily[]>([]);
@@ -197,6 +202,20 @@ export function SalesPage() {
     setMessage("");
     setError("");
     const payload = withCalculatedTotals(createForm);
+    const sku = skuOptions.find((item) => item.sku_id === Number(payload.sku_id));
+    if (
+      !confirmDetailed("即将录入销售流水", [
+        ["门店ID", me?.store_id ?? 1],
+        ["销售日期", payload.sales_date],
+        ["SKU", sku ? `${sku.sku_code} - ${sku.sku_name}` : payload.sku_id],
+        ["销售数量", payload.sku_amount],
+        ["总收入", payload.total_income],
+        ["总利润", payload.total_profit],
+        ["强制覆盖", payload.force_overwrite ? "是" : "否"],
+      ])
+    ) {
+      return;
+    }
     try {
       const res = await createSalesDaily({
         store_id: me?.store_id ?? 1,
@@ -232,6 +251,20 @@ export function SalesPage() {
     setMessage("");
     setError("");
     const payload = withCalculatedTotals(updateForm);
+    const sku = skuOptions.find((item) => item.sku_id === Number(payload.sku_id));
+    if (
+      !confirmDetailed("即将修改销售流水", [
+        ["销售单号", sales_id],
+        ["门店ID", me?.store_id ?? 1],
+        ["销售日期", payload.sales_date],
+        ["SKU", sku ? `${sku.sku_code} - ${sku.sku_name}` : payload.sku_id],
+        ["销售数量", payload.sku_amount],
+        ["总收入", payload.total_income],
+        ["总利润", payload.total_profit],
+      ])
+    ) {
+      return;
+    }
     try {
       const res = await updateSalesDaily(sales_id, {
         store_id: me?.store_id ?? 1,

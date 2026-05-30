@@ -717,6 +717,16 @@ export class AegisMockApi {
     return ok(mockUsers[idx], "更新成功");
   }
 
+  public async deactivateUser(user_id: number): Promise<ApiResponse<null>> {
+    await sleep(120);
+    const idx = mockUsers.findIndex((x) => x.user_id === user_id);
+    if (idx < 0) {
+      return { code: 1001, message: "用户不存在", data: null };
+    }
+    mockUsers.splice(idx, 1);
+    return ok(null, "用户已软删除");
+  }
+
   public async getSales(query: SalesQuery): Promise<ApiResponse<PagedData<SalesDaily>>> {
     await sleep(150);
 

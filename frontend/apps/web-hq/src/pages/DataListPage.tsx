@@ -9,7 +9,6 @@ import {
   createStore,
   createUser,
   deactivateSku,
-  deactivateStore,
   fetchSkuCategories,
   fetchSkus,
   fetchStoreById,
@@ -21,6 +20,7 @@ import {
   updateSku,
   updateStore,
   updateUser,
+  deactivateUser,
 } from "../services/api";
 
 type Row = Record<string, string | number | null>;
@@ -52,7 +52,7 @@ const SKU_FIELD_LABELS = {
 
 const SKU_STATUS_LABELS: Record<string, string> = {
   sale: "在售",
-  inactive: "已停用",
+  unsale: "已停用",
 };
 
 const USER_FIELD_LABELS = {
@@ -158,17 +158,37 @@ function parseError(err: unknown): string {
   return err instanceof Error ? err.message : "请求失败";
 }
 
+function confirmDetailed(title: string, details: Array<[string, string | number | null | undefined]>): boolean {
+  const body = details.map(([label, value]) => `${label}：${value ?? "-"}`).join("\n");
+  return window.confirm(`${title}\n\n${body}\n\n确认继续操作吗？`);
+}
+
+function isBusinessStore(store: Store): boolean {
+  const code = store.store_code.trim().toUpperCase();
+  return store.store_id !== 0 && code !== "HQ" && !store.store_name.includes("总部");
+}
+
+function nextSequentialCode(items: Array<{ code: string }>, prefix: string, width = 3): string {
+  const max = items.reduce((best, item) => {
+    const match = item.code.trim().match(new RegExp(`^${prefix}(\\d+)$`, "i"));
+    return match ? Math.max(best, Number(match[1])) : best;
+  }, 0);
+  return `${prefix}${String(max + 1).padStart(width, "0")}`;
+}
+
 export function StoresPage() {
   const [rows, setRows] = useState<Store[]>([]);
   const [page, setPage] = useState(1);
   const [limit] = useState(10);
   const [total, setTotal] = useState(0);
   const [keyword, setKeyword] = useState("");
+  const [appliedKeyword, setAppliedKeyword] = useState("");
   const [status, setStatus] = useState<"" | "active" | "inactive">("");
+  const [appliedStatus, setAppliedStatus] = useState<"" | "active" | "inactive">("");
   const [detailStore, setDetailStore] = useState<Store | null>(null);
   const [activeStoreModal, setActiveStoreModal] = useState<"detail" | "edit" | null>(null);
   const [createForm, setCreateForm] = useState({
-    store_code: "",
+    store_code: "S001",
     store_name: "",
     store_location: "",
     store_area: "",
@@ -188,20 +208,49 @@ export function StoresPage() {
     const res = await fetchStores({
       page: targetPage,
       limit,
-      keyword: keyword || undefined,
-      store_status: status || undefined,
+      keyword: appliedKeyword || undefined,
+      store_status: appliedStatus || undefined,
     });
-    setRows(res.data);
+    setRows(res.data.filter(isBusinessStore));
     setTotal(res.total);
   }
 
   useEffect(() => {
     void loadStores();
-  }, [page, limit, keyword, status]);
+  }, [page, limit, appliedKeyword, appliedStatus]);
+
+  useEffect(() => {
+    fetchStores({ page: 1, limit: 1000 })
+      .then((res) => {
+        const code = nextSequentialCode(
+          res.data.filter(isBusinessStore).map((store) => ({ code: store.store_code })),
+          "S"
+        );
+        setCreateForm((s) => ({ ...s, store_code: code }));
+      })
+      .catch(() => undefined);
+  }, [rows]);
+
+  function onSearchStores() {
+    setAppliedKeyword(keyword);
+    setAppliedStatus(status);
+    setPage(1);
+  }
 
   async function onCreateStore() {
     setMessage("");
     setError("");
+    if (
+      !confirmDetailed("即将创建门店", [
+        ["门店编码", createForm.store_code],
+        ["门店名称", createForm.store_name],
+        ["门店位置", createForm.store_location],
+        ["门店面积", createForm.store_area],
+        ["门店状态", STORE_STATUS_LABELS[createForm.store_status]],
+      ])
+    ) {
+      return;
+    }
     try {
       const created = await createStore({
         store_code: createForm.store_code.trim(),
@@ -266,23 +315,23 @@ export function StoresPage() {
       store_status: editForm.store_status || undefined,
     };
 
+    if (
+      payload.store_status === "inactive" &&
+      !confirmDetailed("即将停用门店", [
+        ["门店ID", store_id],
+        ["门店名称", editForm.store_name],
+        ["门店位置", editForm.store_location],
+        ["门店面积", editForm.store_area],
+      ])
+    ) {
+      return;
+    }
+
     try {
       const updated = await updateStore(store_id, payload);
       setDetailStore(updated);
       setActiveStoreModal(null);
       setMessage("门店更新成功");
-      await loadStores();
-    } catch (err) {
-      setError(parseError(err));
-    }
-  }
-
-  async function onDeactivateStore(store_id: number) {
-    setMessage("");
-    setError("");
-    try {
-      await deactivateStore(store_id);
-      setMessage(`门店 ${store_id} 已停用`);
       await loadStores();
     } catch (err) {
       setError(parseError(err));
@@ -298,31 +347,28 @@ export function StoresPage() {
         <input
           placeholder="搜索门店名/编码"
           value={keyword}
-          onChange={(e) => {
-            setPage(1);
-            setKeyword(e.target.value);
-          }}
+          onChange={(e) => setKeyword(e.target.value)}
         />
         <select
           value={status}
-          onChange={(e) => {
-            setPage(1);
-            setStatus(e.target.value as "" | "active" | "inactive");
-          }}
+          onChange={(e) => setStatus(e.target.value as "" | "active" | "inactive")}
         >
           <option value="">全部状态</option>
           <option value="active">{STORE_STATUS_LABELS.active}</option>
           <option value="inactive">{STORE_STATUS_LABELS.inactive}</option>
         </select>
+        <button type="button" onClick={onSearchStores}>
+          搜索
+        </button>
       </div>
       <div className="ops-grid">
         <div className="op-card">
           <h3>新增门店</h3>
           <div className="form-grid">
             <input
-              placeholder="门店编码"
+              placeholder="门店编码（自动分配）"
               value={createForm.store_code}
-              onChange={(e) => setCreateForm((s) => ({ ...s, store_code: e.target.value }))}
+              readOnly
             />
             <input
               placeholder="门店名称"
@@ -388,9 +434,6 @@ export function StoresPage() {
                       </button>
                       <button type="button" onClick={() => fillEditForm(x)}>
                         编辑
-                      </button>
-                      <button type="button" onClick={() => void onDeactivateStore(x.store_id)}>
-                        停用
                       </button>
                     </div>
                   </td>
@@ -503,11 +546,13 @@ export function SkusPage() {
   const [limit] = useState(10);
   const [total, setTotal] = useState(0);
   const [keyword, setKeyword] = useState("");
+  const [appliedKeyword, setAppliedKeyword] = useState("");
   const [categoryId, setCategoryId] = useState("");
+  const [appliedCategoryId, setAppliedCategoryId] = useState("");
   const [categories, setCategories] = useState<SKUCategory[]>([]);
   const [activeSkuModal, setActiveSkuModal] = useState<"edit" | null>(null);
   const [createForm, setCreateForm] = useState({
-    sku_code: "",
+    sku_code: "SKU001",
     sku_name: "",
     category_id: "",
     std_cost: "",
@@ -529,8 +574,8 @@ export function SkusPage() {
     const res = await fetchSkus({
       page: targetPage,
       limit,
-      keyword: keyword || undefined,
-      category_id: categoryId ? Number(categoryId) : undefined,
+      keyword: appliedKeyword || undefined,
+      category_id: appliedCategoryId ? Number(appliedCategoryId) : undefined,
     });
     setRows(res.data);
     setTotal(res.total);
@@ -538,13 +583,25 @@ export function SkusPage() {
 
   useEffect(() => {
     void loadSkus();
-  }, [page, limit, keyword, categoryId]);
+  }, [page, limit, appliedKeyword, appliedCategoryId]);
 
   useEffect(() => {
     fetchSkuCategories()
       .then((res) => setCategories(res))
       .catch(() => setCategories([]));
   }, []);
+
+  useEffect(() => {
+    fetchSkus({ page: 1, limit: 1000 })
+      .then((res) => {
+        const code = nextSequentialCode(
+          res.data.map((sku) => ({ code: sku.sku_code })),
+          "SKU"
+        );
+        setCreateForm((s) => ({ ...s, sku_code: code }));
+      })
+      .catch(() => undefined);
+  }, [rows]);
 
   const categoryOptions = useMemo(
     () => categories.map((x) => ({ value: String(x.category_id), label: x.category_name })),
@@ -563,9 +620,28 @@ export function SkusPage() {
     setActiveSkuModal("edit");
   }
 
+  function onSearchSkus() {
+    setAppliedKeyword(keyword);
+    setAppliedCategoryId(categoryId);
+    setPage(1);
+  }
+
   async function onCreateSku() {
     setMessage("");
     setError("");
+    const categoryLabel = categoryOptions.find((x) => x.value === createForm.category_id)?.label ?? createForm.category_id;
+    if (
+      !confirmDetailed("即将创建 SKU", [
+        ["SKU编码", createForm.sku_code],
+        ["SKU名称", createForm.sku_name],
+        ["分类", categoryLabel],
+        ["标准成本", createForm.std_cost],
+        ["建议售价", createForm.sug_price],
+        ["强制覆盖", createForm.force ? "是" : "否"],
+      ])
+    ) {
+      return;
+    }
     try {
       await createSku({
         sku_code: createForm.sku_code.trim(),
@@ -619,6 +695,17 @@ export function SkusPage() {
   async function onDeactivateSku(sku_id: number) {
     setMessage("");
     setError("");
+    const sku = rows.find((item) => item.sku_id === sku_id);
+    if (
+      !confirmDetailed("即将停用 SKU", [
+        ["SKU ID", sku_id],
+        ["SKU编码", sku?.sku_code],
+        ["SKU名称", sku?.sku_name],
+        ["分类", sku?.category_name],
+      ])
+    ) {
+      return;
+    }
     try {
       await deactivateSku(sku_id);
       setMessage(`SKU ${sku_id} 已停用`);
@@ -637,17 +724,11 @@ export function SkusPage() {
         <input
           placeholder="搜索 SKU 名/编码"
           value={keyword}
-          onChange={(e) => {
-            setPage(1);
-            setKeyword(e.target.value);
-          }}
+          onChange={(e) => setKeyword(e.target.value)}
         />
         <select
           value={categoryId}
-          onChange={(e) => {
-            setPage(1);
-            setCategoryId(e.target.value);
-          }}
+          onChange={(e) => setCategoryId(e.target.value)}
         >
           <option value="">全部分类</option>
           {categoryOptions.map((x) => (
@@ -656,15 +737,18 @@ export function SkusPage() {
             </option>
           ))}
         </select>
+        <button type="button" onClick={onSearchSkus}>
+          搜索
+        </button>
       </div>
       <div className="ops-grid">
         <div className="op-card">
           <h3>新增 SKU</h3>
           <div className="form-grid">
             <input
-              placeholder="SKU编码"
+              placeholder="SKU编码（自动分配）"
               value={createForm.sku_code}
-              onChange={(e) => setCreateForm((s) => ({ ...s, sku_code: e.target.value }))}
+              readOnly
             />
             <input
               placeholder="SKU名称"
@@ -838,12 +922,14 @@ export function UsersPage() {
   const [limit] = useState(10);
   const [total, setTotal] = useState(0);
   const [storeId, setStoreId] = useState("");
+  const [appliedStoreId, setAppliedStoreId] = useState("");
   const [roleId, setRoleId] = useState("");
+  const [appliedRoleId, setAppliedRoleId] = useState("");
   const [createForm, setCreateForm] = useState({
     store_id: "",
     role_id: "",
     user_name: "",
-    account_name: "",
+    account_name: "user001",
     password: "",
   });
   const [editForm, setEditForm] = useState({
@@ -860,8 +946,8 @@ export function UsersPage() {
     const res = await fetchUsers({
       page: targetPage,
       limit,
-      store_id: storeId ? Number(storeId) : undefined,
-      role_id: roleId ? Number(roleId) : undefined,
+      store_id: appliedStoreId ? Number(appliedStoreId) : undefined,
+      role_id: appliedRoleId ? Number(appliedRoleId) : undefined,
     });
     setRows(res.data);
     setTotal(res.total);
@@ -869,7 +955,25 @@ export function UsersPage() {
 
   useEffect(() => {
     void loadUsers();
-  }, [page, limit, storeId, roleId]);
+  }, [page, limit, appliedStoreId, appliedRoleId]);
+
+  useEffect(() => {
+    fetchUsers({ page: 1, limit: 1000 })
+      .then((res) => {
+        const code = nextSequentialCode(
+          res.data.map((user) => ({ code: user.account_name })),
+          "user"
+        );
+        setCreateForm((s) => ({ ...s, account_name: code }));
+      })
+      .catch(() => undefined);
+  }, [rows]);
+
+  function onSearchUsers() {
+    setAppliedStoreId(storeId);
+    setAppliedRoleId(roleId);
+    setPage(1);
+  }
 
   function fillEditUser(row: User) {
     setEditForm({
@@ -884,6 +988,16 @@ export function UsersPage() {
   async function onCreateUser() {
     setMessage("");
     setError("");
+    if (
+      !confirmDetailed("即将创建用户", [
+        ["账号", createForm.account_name],
+        ["用户姓名", createForm.user_name],
+        ["门店ID", createForm.store_id],
+        ["角色ID", createForm.role_id],
+      ])
+    ) {
+      return;
+    }
     try {
       await createUser({
         store_id: Number(createForm.store_id),
@@ -929,6 +1043,29 @@ export function UsersPage() {
     }
   }
 
+  async function onDeactivateUser(row: User) {
+    setMessage("");
+    setError("");
+    if (
+      !confirmDetailed("即将软删除用户", [
+        ["用户ID", row.user_id],
+        ["账号", row.account_name],
+        ["用户姓名", row.user_name],
+        ["角色", row.role_name],
+        ["门店ID", row.store_id],
+      ])
+    ) {
+      return;
+    }
+    try {
+      await deactivateUser(row.user_id);
+      setMessage(`用户 ${row.user_id} 已软删除`);
+      await loadUsers();
+    } catch (err) {
+      setError(parseError(err));
+    }
+  }
+
   return (
     <section>
       <h2>用户管理</h2>
@@ -938,19 +1075,16 @@ export function UsersPage() {
         <input
           placeholder="门店ID"
           value={storeId}
-          onChange={(e) => {
-            setPage(1);
-            setStoreId(e.target.value);
-          }}
+          onChange={(e) => setStoreId(e.target.value)}
         />
         <input
           placeholder="角色ID"
           value={roleId}
-          onChange={(e) => {
-            setPage(1);
-            setRoleId(e.target.value);
-          }}
+          onChange={(e) => setRoleId(e.target.value)}
         />
+        <button type="button" onClick={onSearchUsers}>
+          搜索
+        </button>
       </div>
       <div className="ops-grid">
         <div className="op-card">
@@ -972,9 +1106,9 @@ export function UsersPage() {
               onChange={(e) => setCreateForm((s) => ({ ...s, user_name: e.target.value }))}
             />
             <input
-              placeholder="账号"
+              placeholder="账号（自动分配）"
               value={createForm.account_name}
-              onChange={(e) => setCreateForm((s) => ({ ...s, account_name: e.target.value }))}
+              readOnly
             />
             <input
               placeholder="密码"
@@ -1020,6 +1154,9 @@ export function UsersPage() {
                     <div className="row-action">
                       <button type="button" onClick={() => fillEditUser(x)}>
                         编辑
+                      </button>
+                      <button type="button" onClick={() => void onDeactivateUser(x)}>
+                        软删除
                       </button>
                     </div>
                   </td>
@@ -1230,6 +1367,20 @@ export function TransfersPage() {
     }
     if (!Number.isInteger(actual_qty) || actual_qty < 0) {
       setError("实际数量必须是大于等于 0 的整数");
+      return;
+    }
+    const storeLabel =
+      createStoreOptions.find((store) => store.store_id === store_id)?.store_name ?? String(store_id);
+    const sku = createSkuOptions.find((item) => item.sku_id === sku_id);
+    if (
+      !confirmDetailed("即将创建调拨单", [
+        ["门店", `${store_id} - ${storeLabel}`],
+        ["SKU", sku ? `${sku.sku_code} - ${sku.sku_name}` : sku_id],
+        ["AI建议调拨量", suggestedTransferQty],
+        ["实际调拨量", actual_qty],
+        ["调拨方向", TRANSFER_DIRECTION_LABELS[createForm.transfer_direction]],
+      ])
+    ) {
       return;
     }
     try {

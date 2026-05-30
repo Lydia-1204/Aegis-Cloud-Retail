@@ -389,6 +389,10 @@ RETURNING user_id`, req.StoreID, req.RoleID, req.UserName, req.AccountName, req.
 }
 
 func (s *Server) handleUserByID(w http.ResponseWriter, r *http.Request, user authUser) {
+	if r.Method == http.MethodDelete {
+		s.handleDeleteUser(w, r, user)
+		return
+	}
 	if r.Method != http.MethodPut {
 		writeJSON(w, http.StatusMethodNotAllowed, response{Code: 1001, Message: "method not allowed", Data: nil})
 		return
@@ -439,4 +443,31 @@ WHERE user_id = $4`, req.StoreID, req.RoleID, req.UserName, userID)
 		return
 	}
 	writeJSON(w, http.StatusOK, response{Code: 0, Message: "更新成功", Data: data})
+}
+
+func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request, user authUser) {
+	if !requireHead(w, user) {
+		return
+	}
+	userID, ok := parseIDFromPath(r.URL.Path, "/api/users/")
+	if !ok || userID == user.UserID {
+		writeJSON(w, http.StatusBadRequest, response{Code: 1001, Message: "user_id 非法", Data: nil})
+		return
+	}
+	res, err := s.db.ExecContext(r.Context(), `
+UPDATE app_users
+SET account_name = CONCAT('__deleted__', user_id, '_', EXTRACT(EPOCH FROM now())::BIGINT),
+    user_name = CONCAT('已删除-', user_name),
+    updated_at = now()
+WHERE user_id = $1
+  AND account_name NOT LIKE '__deleted__%'`, userID)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, response{Code: 5001, Message: "服务器内部错误", Data: nil})
+		return
+	}
+	if affected, _ := res.RowsAffected(); affected == 0 {
+		writeJSON(w, http.StatusBadRequest, response{Code: 1001, Message: "用户不存在或已删除", Data: nil})
+		return
+	}
+	writeJSON(w, http.StatusOK, response{Code: 0, Message: "用户已软删除", Data: nil})
 }

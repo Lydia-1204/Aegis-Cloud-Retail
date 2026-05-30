@@ -4,6 +4,11 @@ import { useAuth } from "../auth/AuthContext";
 import { adjustInventory, fetchInventory, fetchSkuCategories } from "../services/api";
 import { INVENTORY_FIELD_LABELS, ModalShell, PaginationBar, parseError } from "./storeHelpers";
 
+function confirmDetailed(title: string, details: Array<[string, string | number | null | undefined]>): boolean {
+  const body = details.map(([label, value]) => `${label}：${value ?? "-"}`).join("\n");
+  return window.confirm(`${title}\n\n${body}\n\n确认继续操作吗？`);
+}
+
 export function InventoryPage() {
   const { me } = useAuth();
   const [rows, setRows] = useState<InventoryItem[]>([]);
@@ -72,6 +77,20 @@ export function InventoryPage() {
 
     setMessage("");
     setError("");
+    if (
+      !confirmDetailed("即将修改库存", [
+        ["门店ID", me?.store_id ?? 1],
+        ["SKU编码", activeItem.sku_code],
+        ["SKU名称", activeItem.sku_name],
+        ["原库存", activeItem.actual_quantity],
+        ["新库存", adjustForm.actual_quantity],
+        ["诊断类型", adjustForm.inventory_diagonsis_result_type],
+        ["盘点原因", adjustForm.inventory_root_cause],
+        ["备注", adjustForm.remark],
+      ])
+    ) {
+      return;
+    }
     try {
       const rootCause = { reason: adjustForm.inventory_root_cause };
       await adjustInventory({

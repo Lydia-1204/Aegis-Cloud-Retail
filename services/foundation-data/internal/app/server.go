@@ -196,7 +196,7 @@ func (s *Server) handleStores(w http.ResponseWriter, r *http.Request, user authU
 		return
 	}
 
-	where := []string{"1=1"}
+	where := []string{"store_id <> 0", "UPPER(store_code) <> 'HQ'", "store_name NOT ILIKE '%总部%'"}
 	args := []interface{}{}
 	if keyword != "" {
 		args = append(args, "%"+keyword+"%")
@@ -490,7 +490,7 @@ func (s *Server) handleUsers(w http.ResponseWriter, r *http.Request, user authUs
 	roleIDStr := strings.TrimSpace(r.URL.Query().Get("role_id"))
 	storeIDStr := strings.TrimSpace(r.URL.Query().Get("store_id"))
 
-	where := []string{"1=1"}
+	where := []string{"u.account_name NOT LIKE '__deleted__%'"}
 	args := []interface{}{}
 	if roleIDStr != "" {
 		roleID, err := strconv.ParseInt(roleIDStr, 10, 64)

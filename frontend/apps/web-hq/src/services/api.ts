@@ -515,6 +515,25 @@ export async function updateUser(user_id: number, payload: UserUpdateReq): Promi
   return payloadRes.data;
 }
 
+export async function deactivateUser(user_id: number): Promise<null> {
+  if (useMock) {
+    const res = await mockApi.deactivateUser(user_id);
+    return unwrapMockEnvelopeNullable(res);
+  }
+  const res = await fetch(`${DEFAULT_API_BASES.foundationData}/users/${user_id}`, {
+    method: "DELETE",
+    headers: {
+      "Content-Type": "application/json",
+      ...(readAuthToken() ? { Authorization: `Bearer ${readAuthToken()}` } : {}),
+    },
+  });
+  const payloadRes = (await res.json()) as ApiResponse<null>;
+  if (!res.ok || payloadRes.code !== 0) {
+    throw new HttpError(res.status, payloadRes.message || "请求失败");
+  }
+  return payloadRes.data;
+}
+
 export async function fetchSalesDaily(query: SalesQuery): Promise<PagedData<SalesDaily>> {
   if (useMock) {
     const res = await mockApi.getSales(query);
@@ -606,7 +625,7 @@ export async function approveTransfer(order_id: number): Promise<TransferOrder> 
     const res = await mockApi.approveTransfer(order_id);
     return unwrapMockEnvelope(res);
   }
-  return patchTransfer<{}, TransferOrder>(order_id, "approve");
+  return patchTransfer<object, TransferOrder>(order_id, "approve");
 }
 
 export async function issueTransfer(order_id: number): Promise<TransferOrder> {
@@ -614,7 +633,7 @@ export async function issueTransfer(order_id: number): Promise<TransferOrder> {
     const res = await mockApi.issueTransfer(order_id);
     return unwrapMockEnvelope(res);
   }
-  return patchTransfer<{}, TransferOrder>(order_id, "issue");
+  return patchTransfer<object, TransferOrder>(order_id, "issue");
 }
 
 export async function confirmTransfer(order_id: number, payload: ConfirmReq): Promise<TransferOrder> {
@@ -630,5 +649,5 @@ export async function cancelTransfer(order_id: number): Promise<null> {
     const res = await mockApi.cancelTransfer(order_id);
     return unwrapMockEnvelopeNullable(res);
   }
-  return patchTransfer<{}, null>(order_id, "cancel", undefined, true);
+  return patchTransfer<object, null>(order_id, "cancel", undefined, true);
 }

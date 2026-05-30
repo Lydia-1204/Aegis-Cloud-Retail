@@ -31,6 +31,11 @@ function createInitialCard(store: Store): StoreTrafficCard {
   };
 }
 
+function isActiveBusinessStore(store: Store): boolean {
+  const code = store.store_code.trim().toUpperCase();
+  return store.store_status === "active" && store.store_id !== 0 && code !== "HQ" && !store.store_name.includes("总部");
+}
+
 export function OverviewPage() {
   const [cards, setCards] = useState<StoreTrafficCard[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,10 +54,11 @@ export function OverviewPage() {
           return;
         }
 
-        const nextCards = res.data.map((store) => createInitialCard(store));
+        const businessStores = res.data.filter(isActiveBusinessStore);
+        const nextCards = businessStores.map((store) => createInitialCard(store));
         setCards(nextCards);
 
-        cleanups = res.data.map((store) =>
+        cleanups = businessStores.map((store) =>
           subscribeTrafficRealtime(store.store_id, {
             onOpen: () => {
               if (!active) {
