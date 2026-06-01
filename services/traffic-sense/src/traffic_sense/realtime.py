@@ -7,7 +7,7 @@ from typing import Dict, Optional, Set
 from fastapi import WebSocket
 
 REAL_STORE_IDS = {1}
-MOCK_TRAFFIC_ENABLED = False
+MOCK_TRAFFIC_ENABLED = True
 REAL_TRAFFIC_STALE_SECONDS = 7.0
 
 
