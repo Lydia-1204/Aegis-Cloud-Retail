@@ -10,6 +10,25 @@
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
+-- Reset the previous demo dataset before importing this seed version.
+-- Keep store_id=0 (HQ) from the migration, but replace all business mock rows.
+TRUNCATE ai_inventory_diagnoses, transfer_details, transfer_orders, customer_logs,
+  sales_details, sales_daily, inventories, skus, sku_categories, app_users, roles
+  RESTART IDENTITY CASCADE;
+
+DELETE FROM stores WHERE store_id <> 0;
+
+INSERT INTO stores (store_id, store_code, store_name, store_location, store_area, store_status)
+OVERRIDING SYSTEM VALUE
+VALUES (0, 'HQ', '总部', '', 0, 'active')
+ON CONFLICT (store_id) DO UPDATE SET
+  store_code = EXCLUDED.store_code,
+  store_name = EXCLUDED.store_name,
+  store_location = EXCLUDED.store_location,
+  store_area = EXCLUDED.store_area,
+  store_status = EXCLUDED.store_status,
+  updated_at = now();
+
 -- ---------------------------------------------------------------------------
 -- 角色（文档：Head / Store）
 -- ---------------------------------------------------------------------------
@@ -28,9 +47,9 @@ SELECT setval(pg_get_serial_sequence('roles', 'role_id'), (SELECT MAX(role_id) F
 INSERT INTO stores (store_id, store_code, store_name, store_location, store_area, store_status)
 OVERRIDING SYSTEM VALUE
 VALUES
-  (1, 'S001', '葵涌旗舰店', '香港新界葵涌葵涌道123号', 150.0, 'active'),
-  (2, 'S002', '旺角分店', '香港九龙旺角西洋菜南街88号', 98.5, 'active'),
-  (3, 'S003', '铜锣湾分店', '香港铜锣湾轩尼诗道500号', 120.0, 'inactive')
+  (1, 'S001', '浦东旗舰店', '上海市浦东新区陆家嘴银城路88号', 168.0, 'active'),
+  (2, 'S002', '徐汇社区店', '上海市徐汇区漕溪北路45号', 112.5, 'active'),
+  (3, 'S003', '静安快闪店', '上海市静安区南京西路688号', 86.0, 'inactive')
 ON CONFLICT (store_id) DO UPDATE SET
   store_code     = EXCLUDED.store_code,
   store_name     = EXCLUDED.store_name,
@@ -53,8 +72,8 @@ SELECT setval(
 INSERT INTO app_users (user_id, store_id, role_id, user_name, account_name, password_hash)
 OVERRIDING SYSTEM VALUE
 VALUES
-  (1, 0, 1, '张三', 'head001', crypt('123456', gen_salt('bf'))),
-  (5, 1, 2, '李四', 'store001_mgr', crypt('123456', gen_salt('bf')))
+  (1, 0, 1, '王总部', 'head001', crypt('123456', gen_salt('bf'))),
+  (5, 1, 2, '陈店长', 'store001_mgr', crypt('123456', gen_salt('bf')))
 ON CONFLICT (user_id) DO UPDATE SET
   store_id       = EXCLUDED.store_id,
   role_id        = EXCLUDED.role_id,
@@ -71,7 +90,7 @@ SELECT setval(pg_get_serial_sequence('app_users', 'user_id'), (SELECT MAX(user_i
 INSERT INTO sku_categories (category_id, category_name)
 OVERRIDING SYSTEM VALUE
 VALUES
-  (1, '饮料'),
+  (1, '饮品'),
   (2, '零食')
 ON CONFLICT (category_id) DO UPDATE SET
   category_name = EXCLUDED.category_name,
@@ -102,9 +121,12 @@ SELECT setval(pg_get_serial_sequence('skus', 'sku_id'), (SELECT MAX(sku_id) FROM
 INSERT INTO inventories (inventory_id, store_id, sku_id, actual_quantity)
 OVERRIDING SYSTEM VALUE
 VALUES
-  (1, 1, 101, 23),
-  (2, 1, 102, 156),
-  (3, 1, 103, 8)
+  (1, 1, 101, 72),
+  (2, 1, 102, 48),
+  (3, 1, 103, 135),
+  (4, 2, 101, 36),
+  (5, 2, 102, 64),
+  (6, 2, 103, 90)
 ON CONFLICT (inventory_id) DO UPDATE SET
   store_id         = EXCLUDED.store_id,
   sku_id           = EXCLUDED.sku_id,
@@ -121,27 +143,24 @@ SELECT setval(pg_get_serial_sequence('inventories', 'inventory_id'), (SELECT MAX
 WITH seed_sales AS (
   SELECT *
   FROM (VALUES
-    (1::bigint, CURRENT_DATE - 13, 18, 24, 58),
-    (1::bigint, CURRENT_DATE - 12, 20, 25, 63),
-    (1::bigint, CURRENT_DATE - 11, 19, 22, 60),
-    (1::bigint, CURRENT_DATE - 10, 22, 27, 65),
-    (1::bigint, CURRENT_DATE -  9, 24, 28, 70),
-    (1::bigint, CURRENT_DATE -  8, 31, 31, 86),
-    (1::bigint, CURRENT_DATE -  7, 35, 33, 92),
-    (1::bigint, CURRENT_DATE -  6, 21, 23, 61),
-    (1::bigint, CURRENT_DATE -  5, 23, 24, 66),
-    (1::bigint, CURRENT_DATE -  4, 25, 29, 72),
-    (1::bigint, CURRENT_DATE -  3, 27, 30, 74),
-    (1::bigint, CURRENT_DATE -  2, 34, 32, 88),
-    (1::bigint, CURRENT_DATE -  1, 38, 36, 95),
-    (1::bigint, CURRENT_DATE,      28, 26, 69),
-    (2::bigint, CURRENT_DATE -  6, 12, 18, 40),
-    (2::bigint, CURRENT_DATE -  5, 14, 19, 42),
-    (2::bigint, CURRENT_DATE -  4, 13, 17, 39),
-    (2::bigint, CURRENT_DATE -  3, 16, 22, 45),
-    (2::bigint, CURRENT_DATE -  2, 18, 24, 51),
-    (2::bigint, CURRENT_DATE -  1, 21, 27, 55),
-    (2::bigint, CURRENT_DATE,      15, 20, 44)
+    -- Keep enough sales history for on-demand AI forecasting, while leaving
+    -- ai_analysis empty in the Python seed so there is no precomputed forecast.
+    (1::bigint, CURRENT_DATE - 7, 14, 12, 30),
+    (1::bigint, CURRENT_DATE - 6, 15, 13, 32),
+    (1::bigint, CURRENT_DATE - 5, 16, 13, 34),
+    (1::bigint, CURRENT_DATE - 4, 18, 15, 37),
+    (1::bigint, CURRENT_DATE - 3, 15, 14, 31),
+    (1::bigint, CURRENT_DATE - 2, 20, 16, 42),
+    (1::bigint, CURRENT_DATE - 1, 22, 18, 45),
+    (1::bigint, CURRENT_DATE,     17, 15, 38),
+    (2::bigint, CURRENT_DATE - 7,  9, 10, 22),
+    (2::bigint, CURRENT_DATE - 6, 10, 11, 23),
+    (2::bigint, CURRENT_DATE - 5, 10, 11, 24),
+    (2::bigint, CURRENT_DATE - 4, 12, 13, 26),
+    (2::bigint, CURRENT_DATE - 3, 11, 12, 25),
+    (2::bigint, CURRENT_DATE - 2, 14, 15, 29),
+    (2::bigint, CURRENT_DATE - 1, 16, 16, 31),
+    (2::bigint, CURRENT_DATE,     13, 14, 28)
   ) AS v(store_id, sales_date, qty_101, qty_102, qty_103)
 ), upserted_daily AS (
   INSERT INTO sales_daily (store_id, sales_date, total_orders, total_income, total_profit)
@@ -184,14 +203,15 @@ SELECT setval(pg_get_serial_sequence('sales_daily', 'sales_id'), (SELECT COALESC
 SELECT setval(pg_get_serial_sequence('sales_details', 'detail_id'), (SELECT COALESCE(MAX(detail_id), 1) FROM sales_details), true);
 
 -- ---------------------------------------------------------------------------
--- 客流 mockTrafficLogs（文档时间 2026-03-14 UTC）
+-- 客流 mockTrafficLogs（时间相对部署当天生成）
 -- ---------------------------------------------------------------------------
 INSERT INTO customer_logs (customer_log_id, store_id, record_timestamp, in_count)
 OVERRIDING SYSTEM VALUE
 VALUES
-  (301, 1, '2026-03-14T14:00:00Z', 45),
-  (302, 1, '2026-03-14T15:00:00Z', 67),
-  (303, 1, '2026-03-14T16:00:00Z', 32)
+  (301, 1, CURRENT_DATE - 1 + TIME '10:00', 32),
+  (302, 1, CURRENT_DATE - 1 + TIME '12:00', 58),
+  (303, 1, CURRENT_DATE - 1 + TIME '18:00', 46),
+  (304, 2, CURRENT_DATE - 1 + TIME '12:00', 34)
 ON CONFLICT (customer_log_id) DO UPDATE SET
   store_id         = EXCLUDED.store_id,
   record_timestamp = EXCLUDED.record_timestamp,
@@ -200,36 +220,10 @@ ON CONFLICT (customer_log_id) DO UPDATE SET
 SELECT setval(pg_get_serial_sequence('customer_logs', 'customer_log_id'), (SELECT MAX(customer_log_id) FROM customer_logs), true);
 
 -- ---------------------------------------------------------------------------
--- 调拨单 + 明细（文档 mockTransferOrders；仅库表字段，不含 JSON 里的 store_name）
+-- Transfer orders intentionally stay empty in this demo seed.
 -- ---------------------------------------------------------------------------
-INSERT INTO transfer_orders (order_id, store_id, status, feedback)
-OVERRIDING SYSTEM VALUE
-VALUES
-  (1001, 1, 'issued_pending_confirmation', NULL),
-  (1002, 2, 'in_negotiation', '库容不足，建议可乐调减至30件'),
-  (1003, 3, 'confirmed_executed', NULL)
-ON CONFLICT (order_id) DO UPDATE SET
-  store_id  = EXCLUDED.store_id,
-  status    = EXCLUDED.status,
-  feedback  = EXCLUDED.feedback,
-  updated_at = now();
-
-SELECT setval(pg_get_serial_sequence('transfer_orders', 'order_id'), (SELECT MAX(order_id) FROM transfer_orders), true);
-
-INSERT INTO transfer_details (detail_id, order_id, sku_id, suggested_qty, actual_qty, transfer_direction)
-OVERRIDING SYSTEM VALUE
-VALUES
-  (501, 1001, 101, 50, 50, 'H2S'),
-  (502, 1002, 101, 60, 0, 'H2S'),
-  (503, 1003, 103, 100, 100, 'H2S')
-ON CONFLICT (detail_id) DO UPDATE SET
-  order_id           = EXCLUDED.order_id,
-  sku_id             = EXCLUDED.sku_id,
-  suggested_qty      = EXCLUDED.suggested_qty,
-  actual_qty         = EXCLUDED.actual_qty,
-  transfer_direction = EXCLUDED.transfer_direction;
-
-SELECT setval(pg_get_serial_sequence('transfer_details', 'detail_id'), (SELECT MAX(detail_id) FROM transfer_details), true);
+SELECT setval(pg_get_serial_sequence('transfer_orders', 'order_id'), 1, false);
+SELECT setval(pg_get_serial_sequence('transfer_details', 'detail_id'), 1, false);
 
 -- 可选：如需「从零重灌」本脚本数据，可先执行（会清空业务表，保留 schema_migrations）：
 -- TRUNCATE ai_inventory_diagnoses, transfer_details, transfer_orders, customer_logs, sales_details, sales_daily,

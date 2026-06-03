@@ -25,5 +25,5 @@ seed_once() {
   echo "${marker_name} imported into ${db_name}"
 }
 
-seed_once "${GO_DB:-aegis_go}" "aegis_go_mock_7_1_sales_v1" "/seeds/aegis_go_mock_7_1.sql"
-seed_once "${PYTHON_DB:-aegis_python}" "aegis_python_mock" "/seeds/aegis_python_mock.sql"
+seed_once "${GO_DB:-aegis_go}" "aegis_go_mock_7_1_no_transfers_on_demand_forecast_v4" "/seeds/aegis_go_mock_7_1.sql"
+seed_once "${PYTHON_DB:-aegis_python}" "aegis_python_mock_no_seeded_forecast_current_dates_v4" "/seeds/aegis_python_mock.sql"

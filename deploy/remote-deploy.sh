@@ -118,6 +118,7 @@ deploy_release() {
   ensure_env
 
   if [ -z "$DEPLOY_TARGETS" ] || [ "$DEPLOY_TARGETS" = "all" ]; then
+    compose_cmd "${COMPOSE_FILES[@]}" rm -f -s db-seed || true
     compose_cmd "${COMPOSE_FILES[@]}" up -d --build --remove-orphans
     # The release directory is replaced on every deploy. Recreate nginx so its
     # bind mounts point at the new frontend dist directories, not the previous
