@@ -1,111 +1,108 @@
 # Aegis Cloud Retail
 
-Aegis Cloud Retail 是一个面向零售门店与总部协同场景的全栈系统，包含：
+Aegis Cloud Retail 是一个面向零售门店与总部协同的全栈示例系统。仓库当前包含两个前端应用、四个后端微服务、一个统一 API 网关、PostgreSQL 迁移和种子数据，以及用于服务器部署的 Docker / Nginx / GitHub Actions 配置。
 
-- 总部端 Web 应用
-- 门店端 Web 应用
-- 2 个 Go 微服务
-- 2 个 Python AI 微服务
-- 统一 API 网关
-- Nginx 生产静态站点与反向代理
-- PostgreSQL、迁移与种子数据
-
-当前仓库已适配服务器部署、GitHub Actions 自动部署，以及国内常见镜像源环境。
-
-## 系统结构
+## 项目结构
 
 ```text
-frontend/
-  apps/web-hq            总部端前端
-  apps/web-store         门店端前端
-  packages/shared        前后端共享类型与请求封装
-
-services/
-  foundation-data        Go 基础数据服务
-  store-ops              Go 门店业务服务
-  traffic-sense          Python 客流感知服务
-  ai-assistant           Python AI 对话与分析服务
-
-deploy/
-  docker-compose.prod.yml  生产部署附加配置
-  nginx.conf                生产 Nginx 配置
-  remote-deploy.sh          服务器部署脚本
-  GITHUB_ACTIONS_SETUP.md   自动部署配置说明
-
-database/
-  migrations/             Go / Python 数据库迁移
-  seeds/                  示例种子数据
+.
+├── frontend/                       # React + TypeScript + Vite 前端 monorepo
+│   ├── apps/web-hq                 # 总部端
+│   ├── apps/web-store              # 门店端
+│   └── packages/shared             # 共享类型、HTTP 封装、mock 数据
+├── services/
+│   ├── foundation-data             # Go 基础数据服务：认证、门店、SKU、用户
+│   ├── store-ops                   # Go 门店业务服务：销售、库存、调拨
+│   ├── traffic-sense               # Python 客流感知服务：快照、历史、实时 WebSocket
+│   └── ai-assistant                # Python AI 助手：对话、会话、日志、分析
+├── database/
+│   ├── docker-init                 # PostgreSQL 初始化脚本
+│   ├── migrations                  # Go / Python 两套数据库迁移
+│   └── seeds                       # 演示数据
+├── deploy/
+│   ├── Dockerfile.gateway          # API 网关镜像
+│   ├── docker-compose.prod.yml     # 网关 + Nginx 生产叠加配置
+│   ├── nginx.conf                  # /hq、/store、/api、/edge/traffic 路由
+│   └── remote-deploy.sh            # 服务器部署脚本
+├── docker-compose.yml              # 本地后端基础栈
+├── integration_gateway.py          # FastAPI API 网关
+└── go.work                         # Go workspace
 ```
 
-## 运行架构
+## 技术栈
 
-生产环境默认通过 Nginx 暴露以下入口：
+- 前端：React 18、React Router、TypeScript、Vite、npm workspaces
+- Go 服务：Go 1.22、标准库 HTTP、gRPC、pgx、JWT
+- Python 服务：FastAPI、uvicorn、SQLAlchemy async、asyncpg、gRPC、OpenAI SDK
+- 数据库：PostgreSQL 16、golang-migrate
+- 部署：Docker Compose、Nginx、GitHub Actions
 
-- `/hq/`：总部端
-- `/store/`：门店端
-- `/api/`：统一 API 网关入口
-- `/edge/traffic/`：客流相关入口
+## 服务与端口
 
-后端服务默认端口：
+| 模块 | 默认端口 | 说明 |
+| --- | --- | --- |
+| `foundation-data` | HTTP `8081` / gRPC `50054` | 认证、门店、SKU、用户基础数据 |
+| `store-ops` | HTTP `8082` / gRPC `50055` | 销售、库存、调拨业务 |
+| `traffic-sense` | HTTP `8083` / gRPC `50051` | 客流快照、历史批量、实时连接 |
+| `ai-assistant` | HTTP `8084` / gRPC `50053` | AI 对话、会话、日志、预测分析 |
+| `gateway` | HTTP `8080` | 统一转发 `/api/*` 和 `/edge/traffic/*` |
+| `postgres` | `5432` | 数据库，包含 `aegis_go` 和 `aegis_python` |
+| `web-hq` | `5173` | 总部端 Vite dev server |
+| `web-store` | `5174` | 门店端 Vite dev server |
 
-- `foundation-data`：`8081` / gRPC `50054`
-- `store-ops`：`8082` / gRPC `50055`
-- `traffic-sense`：`8083` / gRPC `50051`
-- `ai-assistant`：`8084` / gRPC `50053`
-- `gateway`：`8080`
-- `postgres`：`5432`
+Go 服务共享 `aegis_go` 数据库；Python 服务共享 `aegis_python` 数据库。`docker-compose.yml` 会自动执行迁移和演示数据导入。
 
-## 快速开始
+## 快速启动
 
-### 1. 本地一键启动后端栈
+### 1. 启动后端基础栈
 
-仓库根目录执行：
+在仓库根目录执行：
 
 ```bash
 docker compose up -d --build
 ```
 
-默认会启动：
-
-- `postgres`
-- `db-migrate-go`
-- `db-migrate-python`
-- `db-seed`
-- `foundation-data`
-- `store-ops`
-- `traffic-sense`
-- `ai-assistant`
-
-查看状态：
+该命令会启动 PostgreSQL、数据库迁移、种子数据导入，以及四个后端微服务。查看状态：
 
 ```bash
 docker compose ps
 ```
 
-停止：
+健康检查示例：
+
+```bash
+curl http://localhost:8081/health
+curl http://localhost:8082/health
+curl http://localhost:8083/health
+curl http://localhost:8084/health
+```
+
+停止基础栈：
 
 ```bash
 docker compose down
 ```
 
-### 2. 本地启动前端
+如需同时启动统一网关和 Nginx，可叠加生产配置：
 
-进入前端目录：
+```bash
+docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml up -d --build
+```
+
+注意：Nginx 会挂载 `frontend/apps/web-hq/dist` 和 `frontend/apps/web-store/dist`，因此使用 Nginx 前需要先构建前端。
+
+### 2. 启动前端
 
 ```bash
 cd frontend
 npm install
-```
-
-启动总部端：
-
-```bash
 npm run dev:hq
 ```
 
-启动门店端：
+另开一个终端启动门店端：
 
 ```bash
+cd frontend
 npm run dev:store
 ```
 
@@ -114,161 +111,111 @@ npm run dev:store
 - 总部端：`http://localhost:5173`
 - 门店端：`http://localhost:5174`
 
-### 3. 构建前端
+前端默认使用 mock 数据。本地联调真实接口时，在对应前端应用环境中设置：
 
 ```bash
-cd frontend
+VITE_USE_MOCK=false
+VITE_API_BASE_URL=/api
+```
+
+## 前端构建
+
+在 `frontend` 目录执行：
+
+```bash
 npm run build
 ```
 
+生产部署到子路径时，当前 GitHub Actions 使用：
+
+```bash
+VITE_USE_MOCK=false VITE_API_BASE_URL=/api VITE_BASE_PATH=/hq/ npm run build -w @aegis/web-hq
+VITE_USE_MOCK=false VITE_API_BASE_URL=/api VITE_BASE_PATH=/store/ npm run build -w @aegis/web-store
+```
+
+对应 Nginx 路由：
+
+- `/hq/`：总部端静态站点
+- `/store/`：门店端静态站点
+- `/api/`：统一 API 网关
+- `/edge/traffic/`：客流边缘接口
+
+## API 入口
+
+统一网关由 [integration_gateway.py](/Users/lydia/Desktop/专综/Aegis-Cloud-Retail/integration_gateway.py) 提供，主要转发规则如下：
+
+- `/api/auth`、`/api/stores`、`/api/skus`、`/api/sku-categories`、`/api/users` -> `foundation-data`
+- `/api/sales`、`/api/inventory`、`/api/transfers` -> `store-ops`
+- `/api/ai/chat` -> `ai-assistant`
+- `/api/ai/traffic`、`/edge/traffic` -> `traffic-sense`
+
+两个 Go 服务提供 Swagger UI：
+
+- `http://localhost:8081/swagger`
+- `http://localhost:8082/swagger`
+
 ## 环境变量
 
-示例配置见 [configs/env.example](/Users/lydia/Desktop/专综/Aegis-Cloud-Retail/configs/env.example)。
+示例文件见 [configs/env.example](/Users/lydia/Desktop/专综/Aegis-Cloud-Retail/configs/env.example)。常用变量：
 
-常见关键变量：
+| 变量 | 说明 |
+| --- | --- |
+| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | PostgreSQL 默认账号和 Go 数据库名 |
+| `GO_DATABASE_URL` / `DATABASE_URL` | Go 服务数据库连接 |
+| `PYTHON_DATABASE_URL` | Python 服务数据库连接 |
+| `FOUNDATION_DATA_JWT_SECRET` / `JWT_SECRET` | JWT 签名密钥 |
+| `CORS_ALLOW_ORIGINS` | 允许访问后端的前端来源 |
+| `DEEPSEEK_API_KEY` | AI 助手调用大模型的 API Key |
+| `DEEPSEEK_BASE_URL` | DeepSeek/OpenAI 兼容接口地址，默认 `https://api.deepseek.com` |
+| `SEED_DEMO_DATA` | 是否导入演示数据，默认 `true` |
 
-- `POSTGRES_USER`
-- `POSTGRES_PASSWORD`
-- `POSTGRES_DB`
-- `GO_DATABASE_URL`
-- `PYTHON_DATABASE_URL`
-- `FOUNDATION_DATA_JWT_SECRET`
-- `CORS_ALLOW_ORIGINS`
-- `DEEPSEEK_API_KEY`
-- `DEEPSEEK_BASE_URL`
+`ai-assistant` 未配置 `DEEPSEEK_API_KEY` 时仍可启动，但真实大模型对话能力不可用，会使用服务内的降级逻辑。
 
-### AI 对话注意事项
+## 部署
 
-`ai-assistant` 服务在未配置 `DEEPSEEK_API_KEY` 时仍可启动，但会进入本地 fallback 模式，无法提供真实大模型对话能力。
+仓库包含 GitHub Actions 自动部署流程：[.github/workflows/deploy.yml](/Users/lydia/Desktop/专综/Aegis-Cloud-Retail/.github/workflows/deploy.yml)。
 
-生产服务器补充方式：
+部署流程会根据变更范围决定是否构建前端、是否重建指定服务，随后打包仓库并通过 SSH 执行 [deploy/remote-deploy.sh](/Users/lydia/Desktop/专综/Aegis-Cloud-Retail/deploy/remote-deploy.sh)。
 
-```bash
-ssh root@47.99.126.89
-cd /opt/aegis
-nano .env
-```
+需要配置的 GitHub Secrets：
 
-将下面这行填成真实值：
+- `SERVER_HOST`
+- `SERVER_USER`
+- `SERVER_PORT`
+- `SERVER_APP_DIR`
+- `SERVER_ORIGIN`
+- `SERVER_SSH_KEY`
 
-```env
-DEEPSEEK_API_KEY=your-real-key
-```
-
-保存后重启：
+服务器上手动部署可使用：
 
 ```bash
-docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml up -d --build ai-assistant
-```
-
-## 生产部署
-
-当前生产服务器信息：
-
-- 服务器：阿里云 ECS Ubuntu 22.04
-- IP：`47.99.126.89`
-- 用户：`root`
-- 部署目录：`/opt/aegis`
-- 总部端：`http://47.99.126.89/hq/`
-- 门店端：`http://47.99.126.89/store/`
-
-### 自动部署
-
-已配置 GitHub Actions 工作流：
-
-- [deploy.yml](/Users/lydia/Desktop/专综/Aegis-Cloud-Retail/.github/workflows/deploy.yml)
-
-自动部署流程会：
-
-- 判断本次 push 的改动范围
-- 仅构建必要的前端或后端服务
-- 打包仓库并上传服务器
-- 在服务器执行定向或全量 `docker compose` 部署
-
-GitHub Secrets 配置详见：
-
-- [deploy/GITHUB_ACTIONS_SETUP.md](/Users/lydia/Desktop/专综/Aegis-Cloud-Retail/deploy/GITHUB_ACTIONS_SETUP.md)
-
-### 手动部署
-
-服务器上常用命令：
-
-```bash
-cd /opt/aegis
 docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml up -d --build
 docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml ps
 docker compose -f docker-compose.yml -f deploy/docker-compose.prod.yml logs --tail=100
 ```
 
-## 国内镜像源说明
-
-仓库已针对常见网络环境做过适配：
-
-- Go：`GOPROXY=https://goproxy.cn,direct`
-- Alpine：`mirrors.aliyun.com`
-- pip：`https://pypi.tuna.tsinghua.edu.cn/simple`
-- Debian / Ubuntu 容器源：阿里云镜像
-- Docker daemon registry mirrors：在部署脚本中自动补充
-
-相关文件：
-
-- [services/foundation-data/Dockerfile](/Users/lydia/Desktop/专综/Aegis-Cloud-Retail/services/foundation-data/Dockerfile)
-- [services/store-ops/Dockerfile](/Users/lydia/Desktop/专综/Aegis-Cloud-Retail/services/store-ops/Dockerfile)
-- [services/traffic-sense/Dockerfile](/Users/lydia/Desktop/专综/Aegis-Cloud-Retail/services/traffic-sense/Dockerfile)
-- [services/ai-assistant/Dockerfile](/Users/lydia/Desktop/专综/Aegis-Cloud-Retail/services/ai-assistant/Dockerfile)
-- [deploy/Dockerfile.gateway](/Users/lydia/Desktop/专综/Aegis-Cloud-Retail/deploy/Dockerfile.gateway)
-- [deploy/remote-deploy.sh](/Users/lydia/Desktop/专综/Aegis-Cloud-Retail/deploy/remote-deploy.sh)
-
-## 常见问题
-
-### 1. 页面刷新后 404
-
-生产环境部署在 `/hq/` 和 `/store/` 子路径下，前端路由已按 `BASE_URL` 配置 `basename`。如果线上刷新仍然 404，通常说明：
-
-- 前端最新构建还没有重新部署
-- 或 Nginx 当前仍在使用旧静态文件
-
-建议重新触发前端部署后再验证。
-
-### 2. AI 对话不可用
-
-优先检查：
+## 常用开发命令
 
 ```bash
-grep '^DEEPSEEK_API_KEY=' /opt/aegis/.env
-docker compose -f /opt/aegis/docker-compose.yml -f /opt/aegis/deploy/docker-compose.prod.yml logs --tail=100 ai-assistant
+# 后端基础栈
+docker compose up -d --build
+docker compose logs -f foundation-data store-ops traffic-sense ai-assistant
+
+# 前端
+cd frontend
+npm run dev:hq
+npm run dev:store
+npm run build
+npm run lint
+
+# Go 服务
+cd services/foundation-data && go test ./...
+cd ../store-ops && go test ./...
 ```
 
-如果日志出现：
+Python 服务当前提供若干脚本式测试文件，位于：
 
-```text
-LLM API key not configured
-```
+- [services/traffic-sense/test_grpc.py](/Users/lydia/Desktop/专综/Aegis-Cloud-Retail/services/traffic-sense/test_grpc.py)
+- [services/ai-assistant/test_ai_assistant.py](/Users/lydia/Desktop/专综/Aegis-Cloud-Retail/services/ai-assistant/test_ai_assistant.py)
+- [services/ai-assistant/test_chat_api.py](/Users/lydia/Desktop/专综/Aegis-Cloud-Retail/services/ai-assistant/test_chat_api.py)
 
-说明还没有正确注入真实 API Key。
-
-### 3. GitHub Actions 显示失败，但服务器服务正常
-
-如果日志中包含：
-
-```text
-client_loop: send disconnect: Broken pipe
-```
-
-通常是 GitHub Runner 到服务器的 SSH 长连接中断，而不是部署本身失败。当前 workflow 已加入 SSH keepalive 参数缓解该问题。
-
-### 4. 旧版 docker-compose 导致部署异常
-
-服务器部署脚本默认要求 `docker compose` v2。如果服务器只有旧版 `docker-compose` v1，可能会出现容器元数据兼容问题。建议统一使用：
-
-```bash
-docker compose version
-```
-
-## 更多文档
-
-- [frontend/README.md](/Users/lydia/Desktop/专综/Aegis-Cloud-Retail/frontend/README.md)
-- [AI-README.md](/Users/lydia/Desktop/专综/Aegis-Cloud-Retail/AI-README.md)
-- [deploy/GITHUB_ACTIONS_SETUP.md](/Users/lydia/Desktop/专综/Aegis-Cloud-Retail/deploy/GITHUB_ACTIONS_SETUP.md)
-- [运行流程.md](/Users/lydia/Desktop/专综/Aegis-Cloud-Retail/运行流程.md)
-- [Aegis接口设计文档.md](/Users/lydia/Desktop/专综/Aegis-Cloud-Retail/Aegis接口设计文档.md)
