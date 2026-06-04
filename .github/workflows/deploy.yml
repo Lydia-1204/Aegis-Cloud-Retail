@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - main
-    paths-ignore:
-      - "**/*.md"
   workflow_dispatch:
 
 concurrency:
@@ -65,8 +63,6 @@ jobs:
 
           for file in "${changed_files[@]}"; do
             case "$file" in
-              *.md)
-                ;;
               frontend/apps/web-hq/*)
                 deploy_needed=true
                 build_frontend=true
