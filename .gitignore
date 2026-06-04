@@ -45,3 +45,23 @@ uv.lock
 *.log
 tmp/
 temp/
+
+# Local YOLO node runtime / large artifacts
+local-yolo-node/backend/*.pt
+local-yolo-node/backend/*.onnx
+local-yolo-node/backend/*.engine
+local-yolo-node/backend/*.torchscript
+local-yolo-node/backend/*.tflite
+
+local-yolo-node/samples/*.mp4
+local-yolo-node/samples/*.avi
+local-yolo-node/samples/*.mov
+local-yolo-node/samples/*.mkv
+
+local-yolo-node/backend/.venv/
+local-yolo-node/backend/__pycache__/
+local-yolo-node/backend/.pytest_cache/
+
+local-yolo-node/frontend/node_modules/
+local-yolo-node/frontend/dist/
+local-yolo-node/frontend/.vite/
